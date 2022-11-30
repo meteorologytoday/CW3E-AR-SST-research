@@ -2,12 +2,30 @@ import numpy as np
 import load_data
 import netCDF4
 from datetime import datetime
-from scipy.interpolate import RectBivariateSpline
+
+from pathlib import Path
+import argparse
+
+parser = argparse.ArgumentParser(
+                    prog = 'plot_SST',
+                    description = 'Plot SST comparison',
+)
+
+parser.add_argument('--date', type=str, help='Date string: yyyy-mm-dd', required=True)
+parser.add_argument('--output-dir', type=str, help='Output directory.', default="")
+parser.add_argument('--no-display', action="store_true")
+
+args = parser.parse_args()
+
+
+print(args)
 
 # Configuration
 ref_product = "ERA5"
 compare_products = [ "CFSR", "OSTIA", "OISST",]
-data_date = datetime(2017, 1, 7)
+
+
+data_date = datetime.strptime(args.date, "%Y-%m-%d")#, args.date)
 
 # Prep
 all_products = [ref_product,] + compare_products
@@ -86,7 +104,11 @@ for product in compare_products:
 # Plot data
 print("Loading Matplotlib...")
 import matplotlib
-matplotlib.use('TkAgg')
+if args.no_display is False:
+    matplotlib.use('TkAgg')
+else:
+    matplotlib.use('Agg')
+    
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import cartopy.crs as ccrs
@@ -95,7 +117,7 @@ print("done")
 cent_lon = 180.0
 proj = ccrs.PlateCarree(central_longitude=cent_lon, globe=None)
 
-fig, ax = plt.subplots(1, len(all_products), subplot_kw = dict(projection=proj), gridspec_kw=dict(width_ratios=[1]*len(all_products)), figsize=(16, 4))
+fig, ax = plt.subplots(1, len(all_products), subplot_kw = dict(projection=proj), gridspec_kw=dict(width_ratios=[1]*len(all_products)), figsize=(16, 6))
 
 fig.suptitle("Date: %s" % (data_date.strftime("%Y-%m-%d"),))
 
@@ -139,8 +161,15 @@ for i, product in enumerate(all_products):
     _ax.set_extent((cent_lon - 60, cent_lon + 60, 0, 65), ccrs.PlateCarree())
 
     cb = plt.colorbar(mappable, orientation="horizontal", ticks=sst_ticks) 
-    cb.ax.set_xlabel("SST [${}^\\circ\\mathrm{C}$]")
+    cb.ax.set_xlabel(cb_label)
 
-plt.show()
+if not args.no_display:
+    plt.show()
+
+if args.output_dir != "":
+    
+    print("Create dir: %s" % (args.output_dir,))
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    fig.savefig("%s/SST_compare_%s.png" % (args.output_dir, data_date.strftime("%Y-%m-%d")), dpi=200)
 
 

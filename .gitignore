@@ -1,4 +1,9 @@
 *.nc
 *.tmp*
 *.swp
+*.grb2
+*.grb
+*.jpg
+*.png
+*.gif
 __pycache__/

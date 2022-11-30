@@ -24,7 +24,18 @@ def interpolate_deprecated(lat, lon, arr, new_lat, new_lon, mask_idx=None):
 
 def interpolate(lat, lon, data, new_lat, new_lon, mask_idx=None):
 
-    interp_func = scipy.interpolate.interp2d(lon, lat, data, kind='linear', fill_value=np.nan)
+    ext_lon  = np.zeros((len(lon)+2,), dtype=lon.dtype)
+    ext_data = np.zeros((len(lat), len(lon)+2,), dtype=data.dtype)
+    
+    ext_lon[0]    = lon[-1]   - 360.0
+    ext_lon[1:-1] = lon
+    ext_lon[-1]   = lon[0]    + 360
+
+    ext_data[:, 0]    = data[:, -1]
+    ext_data[:, 1:-1] = data
+    ext_data[:, -1]   = data[:,  0]
+
+    interp_func = scipy.interpolate.interp2d(ext_lon, lat, ext_data, kind='linear', fill_value=np.nan)
     interp_data = interp_func(new_lon, new_lat)
 
     if mask_idx is not None:
