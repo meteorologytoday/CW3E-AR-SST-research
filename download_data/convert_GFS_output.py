@@ -69,6 +69,8 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
 
             var_data = {}
             for varname in varnames:
+                
+                # Collect layers and put them into a 3D field
                 x = np.zeros( (1, len(lev), len(lat), len(lon)), dtype=np.float32)
                 for i, _lev in enumerate(lev):
                     x[0, i, :, :] = ds_tmp.variables["%s_%dmb" % (varname, _lev)][0, :, :]
@@ -79,12 +81,13 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
                 _var = ds_out.createVariable(varname, np.float32, ('time', 'lev', 'lat', 'lon'))
                 _var[0, :, :, :] = x
 
+            if compute_specific_humidity:
 
-            _q = ds_out.createVariable("q", np.float32, ('time', 'lev', 'lat', 'lon'))
+                _q = ds_out.createVariable("q", np.float32, ('time', 'lev', 'lat', 'lon'))
 
-            p_w = 1e5 * np.exp(-40700 / 8.31 * (1 / var_data["TMP"] - 1 / 373)) * var_data["RH"] / 100  # result in Pa
-            q =  (p_w * 18) / (lev[:, None, None] * 100 * 28.9)
-            _q[0, :, :, :] = q
+                p_w = 1e5 * np.exp(-40700 / 8.31 * (1 / var_data["TMP"] - 1 / 373)) * var_data["RH"] / 100  # result in Pa
+                q =  (p_w * 18) / (lev[:, None, None] * 100 * 28.9)
+                _q[0, :, :, :] = q
 
 if __name__ == "__main__":
 
