@@ -2,6 +2,7 @@
 *.tmp*
 *.swp
 *.grb2
+*.grib2
 *.grb
 *.jpg
 *.png

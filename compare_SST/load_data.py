@@ -123,6 +123,32 @@ def getFileAndIndex(product, date, root_dir="data"):
         sst = 'pt'
         unit = 'K'
 
+    elif product == "AVHRR":
+        
+        filename = "%s120000-NCEI-L4_GHRSST-SSTblend-AVHRR_OI-GLOB-v02.0-fv02.0.nc" % (date.strftime("%Y%m%d"))
+        filename = os.path.join(root_dir, "AVHRR", "SST", filename)
+
+        idx = 0
+
+        lat = "lat"
+        lon = "lon" 
+        sst = 'analysed_sst'
+        unit = 'K'
+
+    elif product == "AMSR2":
+       
+        # This dataset does not work 
+        filename = "%s000000-REMSS-L3U_GHRSST-SSTsubskin-AMSR2-f34_20181129v8-v02.0-fv01.0.nc" % (date.strftime("%Y%m%d"))
+        filename = os.path.join(root_dir, "AMSR2", "SST", filename)
+
+        idx = 0
+
+        lat = "lat"
+        lon = "lon" 
+        sst = 'analysed_sst'
+        unit = 'K'
+
+
 
     else:
         raise Exception("Unrecognized product: %s" % (product,))

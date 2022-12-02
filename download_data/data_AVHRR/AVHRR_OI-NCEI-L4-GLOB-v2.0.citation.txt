@@ -1,1 +1,0 @@
-National Centers for Environmental Information. 2016. Daily L4 Optimally Interpolated SST (OISST) In situ and AVHRR Analysis. Ver. 2.0. PO.DAAC, CA, USA. Dataset accessed 2022-11-30 at https://doi.org/10.5067/GHAAO-4BC02

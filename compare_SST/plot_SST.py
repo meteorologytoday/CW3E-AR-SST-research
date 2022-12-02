@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--date', type=str, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--output-dir', type=str, help='Output directory.', default="")
 parser.add_argument('--no-display', action="store_true")
+parser.add_argument('--rows', type=int, default=1)
 
 args = parser.parse_args()
 
@@ -22,7 +23,7 @@ print(args)
 
 # Configuration
 ref_product = "ERA5"
-compare_products = [ "CFSR", "OSTIA", "OISST",]
+compare_products = [ "OSTIA", "CFSR", "AVHRR", "OISST",]
 
 
 data_date = datetime.strptime(args.date, "%Y-%m-%d")#, args.date)
@@ -63,6 +64,15 @@ for product in all_products:
         data['sst'] = new_arrs[0]
 
     datas[product] = data
+
+
+extra_data = {}
+with netCDF4.Dataset("data/ERA5/AR_processed/ERA5_AR_%s.nc" % (data_date.strftime("%Y-%m-%d"),), "r") as ds:
+
+    extra_data['IWV'] = np.flip(ds.variables['IWV'][0, :, :], axis=0)
+    extra_data['lat'] = np.flip(ds.variables['lat'][:], axis=0)
+    extra_data['lon'] = ds.variables['lon'][:]
+
 
 
 #lnd_mask_idx = np.isnan(datas[ref_product]['sst'])
@@ -117,13 +127,21 @@ print("done")
 cent_lon = 180.0
 proj = ccrs.PlateCarree(central_longitude=cent_lon, globe=None)
 
-fig, ax = plt.subplots(1, len(all_products), subplot_kw = dict(projection=proj), gridspec_kw=dict(width_ratios=[1]*len(all_products)), figsize=(16, 6))
+
+rows = args.rows
+cols = int(np.ceil(len(all_products) / rows)) 
+
+fig, gridded_ax = plt.subplots(rows, cols, subplot_kw = dict(projection=proj), figsize=(6*cols, 4*rows))
+
+ax = gridded_ax.flatten()
 
 fig.suptitle("Date: %s" % (data_date.strftime("%Y-%m-%d"),))
 
 for i, product in enumerate(all_products):
  
     print("Plotting product: %s" % (product,) )
+    
+    _ax = ax[i]
 
     data = datas[product]
     ref_data = datas[ref_product]
@@ -148,11 +166,17 @@ for i, product in enumerate(all_products):
         cb_label = "SST bias [${}^\\circ\\mathrm{C}$]"
         title_text = "%s minus %s" % (product, ref_product)
         
-    _ax = ax[i]
+
     mappable = _ax.contourf(ref_data['lon'], ref_data['lat'], _plot_data, levels=sst_levs,
                 transform=ccrs.PlateCarree(),
                 cmap=cmap,
                 extend="both")
+
+    #cs = _ax.contour(extra_data['lon'], extra_data['lat'], extra_data['IWV'], levels=[20, 40, 60, 80],
+    #            transform=ccrs.PlateCarree(),
+    #            colors = "white",
+    #            linewidths=2,
+    #)
 
     _ax.coastlines()
     _ax.set_global()
@@ -162,6 +186,11 @@ for i, product in enumerate(all_products):
 
     cb = plt.colorbar(mappable, orientation="horizontal", ticks=sst_ticks) 
     cb.ax.set_xlabel(cb_label)
+
+for _ax in ax[len(all_products):]:
+
+    fig.delaxes(_ax)
+
 
 if not args.no_display:
     plt.show()

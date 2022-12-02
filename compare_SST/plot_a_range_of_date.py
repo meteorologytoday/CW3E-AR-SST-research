@@ -18,5 +18,5 @@ print("Total days: ", total_days)
 
 for d in range(total_days):
     new_d =  beg_date + timedelta(days=d)
-    pleaseRun("python3 plot_SST.py --no-display --output-dir output --date %s" % (new_d.strftime("%Y-%m-%d"), ) )
+    pleaseRun("python3 plot_SST.py --no-display --output-dir output --date %s --rows 2" % (new_d.strftime("%Y-%m-%d"), ) )
 
