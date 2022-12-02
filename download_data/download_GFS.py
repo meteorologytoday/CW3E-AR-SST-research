@@ -9,10 +9,12 @@ exec(code)
 
 import requests
 import shutil
+from convert_GFS_output import convertGFSOutput
+from compute_AR import computeAR
 
-download_dir = "data/GFS/forecast"
-file_prefix = "GFS_0p25_"
-
+download_dir = "data/GFS/fcst"
+file_prefix = "GFS_0p25"
+fcst_hrs = [0, 120, 240]
 login_post = {
     'email'  : CFSR_email,
     'passwd' : CFSR_passwd,
@@ -60,31 +62,32 @@ def download(url, output, max_attempt=5):
     
     
 
-total_months = (end_time.year*12 + end_time.month-1) - (beg_time.year*12 + end_time.month-1)
-
-print("Going to download %d months of data." % (total_months,))
+total_days = (end_time - beg_time).days
+print("Going to download %d days of data." % (total_days,))
 
 class JOB:
 
-    def __init__(self, t, download_dir, file_prefix, url_fmt):
+    def __init__(self, t, fcst_hr, download_dir, file_prefix):
         self.t = t
         self.download_dir = download_dir
         self.file_prefix = file_prefix
-        self.url_fmt = url_fmt
+        self.fcst_hr = fcst_hr
 
 
     def work(self):
         
         y = self.t.year
         m = self.t.month
+        d = self.t.day
 
-        time_now_str = "%04d-%02d" % (y, m)
+        time_now_str = "%04d-%02d-%02d_f%03d" % (y, m, d, self.fcst_hr)
         tmp_grb2_filename = "%s/%s_%s.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str)
         tmp_nc_filename = "%s/%s_%s.nc.tmp" % (self.download_dir, self.file_prefix, time_now_str)
-        tmp2_nc_filename = "%s/%s_%s.nc.tmp2" % (self.download_dir, self.file_prefix, time_now_str)
-        final_filename = "%s/%s_%s.nc" % (self.download_dir, self.file_prefix, time_now_str)
+        final_filename_AR  = "%s/%s_%s.AR.nc" % (self.download_dir, self.file_prefix, time_now_str)
+        final_filename_HGT500mb = "%s/%s_%s.HGT_500mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
+        final_filename_HGT850mb = "%s/%s_%s.HGT_850mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
 
-        already_exists = os.path.isfile(final_filename)
+        already_exists = os.path.isfile(final_filename_AR) and os.path.isfile(final_filename_HGT500mb) and os.path.path(final_filename_HGT850mb)
 
         if already_exists:
 
@@ -93,40 +96,40 @@ class JOB:
 
         else:
 
-            print("[%s] Now generate file: %s" % (time_now_str, final_filename,))
+            print("[%s] Now generate file: %s" % (time_now_str, ", ".join([final_filename_AR, final_filename_HGT500mb, final_filename_HGT850mb],)))
 
+            datetime_str = self.t.strftime("%Y%m%d")
+            url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr)
             
-        url = self.url_fmt % ( y, y, m)
-        
-        download(url, tmp_grb2_filename)
-        pleaseRun("cdo -f nc copy %s %s" % (tmp_grb2_filename, tmp_nc_filename,))
-        pleaseRun("ncra --mro -d time,,,24,24 -O %s %s" % (tmp_nc_filename, tmp2_nc_filename,))
-        pleaseRun("ncwa -a depth -O %s %s" % (tmp2_nc_filename, final_filename,))
+            download(url, tmp_grb2_filename)
+            convertGFSOutput(tmp_grb2_filename, tmp_nc_filename)
 
-        os.remove(tmp_grb2_filename)
-        os.remove(tmp_nc_filename)
-        os.remove(tmp2_nc_filename)
+            pleaseRun("ncks -O -v HGT -d lev,500.0,500.0 %s %s" % (tmp_nc_filename, final_filename_HGT500mb))
+            pleaseRun("ncks -O -v HGT -d lev,850.0,850.0 %s %s" % (tmp_nc_filename, final_filename_HGT850mb))
+
+            computeAR(tmp_nc_filename, final_filename_AR)
+
+            os.remove(tmp_grb2_filename)
+            os.remove(tmp_nc_filename)
 
 def wrap_retrieve(job):
     job.work()
 
 
 jobs = []
-for m in range(total_months):
 
-    _m = beg_time.year * 12 + (beg_time.month-1) + m 
-    _t = datetime.datetime(_m // 12, _m % 12 + 1, 1)
+    
+for d in range(total_days):
 
-    print("%d : " % (m,), _t)
+    new_d =  beg_time + datetime.timedelta(days=d)
+    timestr = new_d.strftime("%Y%m%d")
 
-    if _t.year >= 1979 and _t.year <= 2010:
-        url_fmt = 'https://rda.ucar.edu/data/ds093.1/%04d/ocnsst.gdas.%04d%02d.grb2'
-    elif _t.year >= 2011:
-        url_fmt = 'https://rda.ucar.edu/data/ds094.1/%04d/ocnsst.cdas1.%04d%02d.grb2'
-    else:
-        raise Exception("Time frame is out of range. CFSR only provides year 1979 afterwards.")
+    print("%d : " % (d,), timestr)
 
-    jobs.append(JOB(_t, download_dir, file_prefix, url_fmt))
+    for fcst_hr in fcst_hrs:
+
+        jobs.append(JOB(new_d, fcst_hr, download_dir, file_prefix))
+
 
 
 print("Total jobs: %d" % (len(jobs),))
@@ -135,7 +138,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=2) as pool:
+with Pool(processes=1) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 

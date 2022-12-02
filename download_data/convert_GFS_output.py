@@ -85,10 +85,17 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
 
                 _q = ds_out.createVariable("q", np.float32, ('time', 'lev', 'lat', 'lon'))
 
+                # The saturated vapor pressure formula is copied from wikipedia.
+                # https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation
                 p_w = 1e5 * np.exp(-40700 / 8.31 * (1 / var_data["TMP"] - 1 / 373)) * var_data["RH"] / 100  # result in Pa
                 q =  (p_w * 18) / (lev[:, None, None] * 100 * 28.9)
                 _q[0, :, :, :] = q
 
+    os.remove(tmp_filename)
+
 if __name__ == "__main__":
 
-   convertGFSOutput(sys.argv[1], sys.argv[2]) 
+    if len(sys.argv) < 3:
+        print("Needs two arguments.")
+   
+    convertGFSOutput(sys.argv[1], sys.argv[2]) 
