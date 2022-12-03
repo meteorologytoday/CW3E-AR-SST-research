@@ -60,7 +60,6 @@ def download(url, output, max_attempt=5):
         print("Download success")
         break
     
-    
 
 total_days = (end_time - beg_time).days
 print("Going to download %d days of data." % (total_days,))
@@ -125,6 +124,9 @@ for d in range(total_days):
     timestr = new_d.strftime("%Y%m%d")
 
     print("%d : " % (d,), timestr)
+
+    if new_d.month <=10 and new_d.month >=5:
+        continue
 
     for fcst_hr in fcst_hrs:
 
