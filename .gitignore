@@ -7,4 +7,5 @@
 *.jpg
 *.png
 *.gif
+*.npz
 __pycache__/

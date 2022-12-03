@@ -87,7 +87,7 @@ class JOB:
         final_filename_HGT500mb = "%s/%s_%s.HGT_500mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
         final_filename_HGT850mb = "%s/%s_%s.HGT_850mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
 
-        already_exists = os.path.isfile(final_filename_AR) and os.path.isfile(final_filename_HGT500mb) and os.path.path(final_filename_HGT850mb)
+        already_exists = os.path.isfile(final_filename_AR) and os.path.isfile(final_filename_HGT500mb) and os.path.isfile(final_filename_HGT850mb)
 
         if already_exists:
 
@@ -138,7 +138,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=1) as pool:
+with Pool(processes=2) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 
