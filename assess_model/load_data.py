@@ -20,12 +20,13 @@ def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
         if fcst == -1:
             raise Exception("Need parameter `fcst` -- forecast hour.")
 
+        timestr = date.strftime("%Y%m%d")
         if varname in ["IWV", "IVT", "IWVKE"]:
-            filename = "GFS_0p25_%s_f%03d.AR.nc" % (date.strftime("%Y-%m-%d"), fcst)
+            filename = "GFS_0p25_%s_f%03d.AR.nc" % (timestr, fcst)
         elif varname == "HGT_500mb":
-            filename = "GFS_0p25_%s_f%03d.HGT_500mb.nc" % (date.strftime("%Y-%m-%d"), fcst)
+            filename = "GFS_0p25_%s_f%03d.HGT_500mb.nc" % (timestr, fcst)
         elif varname == "HGT_850mb":
-            filename = "GFS_0p25_%s_f%03d.HGT_850mb.nc" % (date.strftime("%Y-%m-%d"), fcst)
+            filename = "GFS_0p25_%s_f%03d.HGT_850mb.nc" % (timestr, fcst)
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )
 

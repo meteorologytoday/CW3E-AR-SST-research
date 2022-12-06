@@ -61,7 +61,7 @@ skills = {
 for k, _dict in skills.items():
     
     for AR_var in AR_vars:
-        skills[k][AR_var] = np.zeros((total_days,))
+        skills[k][AR_var] = np.zeros((2, total_days,)) # first index: [0=obs, 1=fcst], second index: days
 
 # Prep
 datas = {}
@@ -136,9 +136,13 @@ for d in range(total_days):
             
 
             # compute skill
-            _diff = _data['fcst'] - _data['obs']
-            skills['pt-by-pt'][varname][d]  = np.average(np.average( _diff**2, axis=1), weights=wgt)
-            skills['integrated'][varname][d] = np.average(np.average( _diff, axis=1), weights=wgt)**2
+            #_diff = _data['fcst'] - _data['obs']
+
+            skills['pt-by-pt'][varname][0, d]  = np.average(np.average( _data['obs'],  axis=1), weights=wgt)
+            skills['pt-by-pt'][varname][1, d]  = np.average(np.average( _data['fcst'], axis=1), weights=wgt)
+
+            skills['integrated'][varname][0, d] = np.average(np.average( _data['obs'], axis=1), weights=wgt)
+            skills['integrated'][varname][1, d] = np.average(np.average( _data['fcst'], axis=1), weights=wgt)
 
     except Exception as e:
 
@@ -148,8 +152,8 @@ for d in range(total_days):
         data_good[d] = 0.0
 
 for AR_var in AR_vars:
-    skills['pt-by-pt'][AR_var][data_good == 0.0] = np.nan
-    skills['integrated'][AR_var][data_good == 0.0] = np.nan
+    skills['pt-by-pt'][AR_var][:, data_good == 0.0] = np.nan
+    skills['integrated'][AR_var][:, data_good == 0.0] = np.nan
 
 
 t_vec = np.array([ beg_date + timedelta(days=d) for d in range(total_days)], dtype="datetime64[s]")

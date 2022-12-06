@@ -14,7 +14,7 @@ from compute_AR import computeAR
 
 download_dir = "data/GFS/fcst"
 file_prefix = "GFS_0p25"
-fcst_hrs = [0, 120, 240]
+fcst_hrs = [0, 240]
 login_post = {
     'email'  : CFSR_email,
     'passwd' : CFSR_passwd,
@@ -52,14 +52,19 @@ def download(url, output, max_attempt=5):
                 with open(output, 'wb') as f:
                     shutil.copyfileobj(download_resp.raw, f)
 
+            okay = True
+
         except Exception as e:
             print("Someting went wrong: ", e)
             print("Try to redownload again. Current attempt: %d" % (attempt,)) 
             continue
 
-        print("Download success")
-        break
+        if okay:
+            print("Download success")
+            break
     
+
+    return okay
 
 total_days = (end_time - beg_time).days
 print("Going to download %d days of data." % (total_days,))
@@ -79,9 +84,13 @@ class JOB:
         m = self.t.month
         d = self.t.day
 
-        time_now_str = "%04d-%02d-%02d_f%03d" % (y, m, d, self.fcst_hr)
-        tmp_grb2_filename = "%s/%s_%s.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str)
+        time_now_str = "%04d%02d%02d_f%03d" % (y, m, d, self.fcst_hr)
+
         tmp_nc_filename = "%s/%s_%s.nc.tmp" % (self.download_dir, self.file_prefix, time_now_str)
+                
+        tmp_grb2_filenames = []
+        tmp_grb2_filename_ave = "%s/%s_%s_ave.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str)
+
         final_filename_AR  = "%s/%s_%s.AR.nc" % (self.download_dir, self.file_prefix, time_now_str)
         final_filename_HGT500mb = "%s/%s_%s.HGT_500mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
         final_filename_HGT850mb = "%s/%s_%s.HGT_850mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
@@ -98,18 +107,40 @@ class JOB:
             print("[%s] Now generate file: %s" % (time_now_str, ", ".join([final_filename_AR, final_filename_HGT500mb, final_filename_HGT850mb],)))
 
             datetime_str = self.t.strftime("%Y%m%d")
-            url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr)
-            
-            download(url, tmp_grb2_filename)
-            convertGFSOutput(tmp_grb2_filename, tmp_nc_filename)
+            urls =[
+                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr),
+                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s06.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr),
+                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s12.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr),
+                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s18.f%03d.grib2' % (y, datetime_str, datetime_str, self.fcst_hr),
+            ]
 
-            pleaseRun("ncks -O -v HGT -d lev,500.0,500.0 %s %s" % (tmp_nc_filename, final_filename_HGT500mb))
-            pleaseRun("ncks -O -v HGT -d lev,850.0,850.0 %s %s" % (tmp_nc_filename, final_filename_HGT850mb))
+            okay = True
+            for hr in [0, 6, 12, 18]:
+                tmp_grb2_filename = "%s/%s_%s_%02d.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str, hr)
+                url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s%02d.f%03d.grib2' % (y, datetime_str, datetime_str, hr, self.fcst_hr)
+                okay = okay and download(url, tmp_grb2_filename)
+                
+                tmp_grb2_filenames.append(tmp_grb2_filename)
 
-            computeAR(tmp_nc_filename, final_filename_AR)
+            if okay:
 
-            os.remove(tmp_grb2_filename)
-            os.remove(tmp_nc_filename)
+                pleaseRun("gmerge - %s | wgrib2 -  -match ':(TMP|HGT|RH|UGRD|VGRD):[0-9]+ mb:' -ave 6hr %s" % (" ".join(tmp_grb2_filenames), tmp_grb2_filename_ave))
+                convertGFSOutput(tmp_grb2_filename_ave, tmp_nc_filename)
+                pleaseRun("ncks -O -d lat,0.0,65.0 %s %s" % (tmp_nc_filename, tmp_nc_filename))
+
+                pleaseRun("ncks -O -v HGT -d lev,500.0,500.0 %s %s" % (tmp_nc_filename, final_filename_HGT500mb))
+                pleaseRun("ncks -O -v HGT -d lev,850.0,850.0 %s %s" % (tmp_nc_filename, final_filename_HGT850mb))
+
+                computeAR(tmp_nc_filename, final_filename_AR)
+            else:
+
+                print("Not okay. Skip.")
+
+            for fn in [tmp_grb2_filename_ave, tmp_nc_filename] + tmp_grb2_filenames:
+                try:
+                    os.remove(fn)
+                except OSError:
+                    pass
 
 def wrap_retrieve(job):
     job.work()
@@ -118,19 +149,19 @@ def wrap_retrieve(job):
 jobs = []
 
     
-for d in range(total_days):
+for cnt in range(total_days):
 
-    new_d =  beg_time + datetime.timedelta(days=d)
-    timestr = new_d.strftime("%Y%m%d")
+    new_t =  beg_time + datetime.timedelta(days=cnt)
+    timestr = new_t.strftime("%Y%m%d")
 
-    print("%d : " % (d,), timestr)
+    print("%cnt : " % (cnt,), timestr)
 
-    if new_d.month <=10 and new_d.month >=5:
+    if new_t.month <=10 and new_t.month >=5:
         continue
 
     for fcst_hr in fcst_hrs:
 
-        jobs.append(JOB(new_d, fcst_hr, download_dir, file_prefix))
+        jobs.append(JOB(new_t, fcst_hr, download_dir, file_prefix))
 
 
 
@@ -140,7 +171,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=2) as pool:
+with Pool(processes=4) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 

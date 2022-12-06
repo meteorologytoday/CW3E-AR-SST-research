@@ -123,7 +123,7 @@ class JOB:
             lev_weight = np.zeros((len(lev),))
             dlev = lev[1:] - lev[:-1]
             lev_weight[1:-1] = (dlev[1:] + dlev[:-1]) / 2
-            lev_weight[1]    = dlev[1]  / 2
+            lev_weight[0]    = dlev[0]  / 2
             lev_weight[-1]   = dlev[-1] / 2
             lev_weight *= 100.0 / g0  # convert into density
             

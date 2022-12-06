@@ -40,7 +40,7 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
                 continue
 
             read_lev = int(m.group("LEV"))
-            if read_lev < 100:
+            if read_lev < 200:
                 continue
             
             lev.append(int(m.group("LEV")))
@@ -88,7 +88,8 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
                 # The saturated vapor pressure formula is copied from wikipedia.
                 # https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation
                 p_w = 1e5 * np.exp(-40700 / 8.31 * (1 / var_data["TMP"] - 1 / 373)) * var_data["RH"] / 100  # result in Pa
-                q =  (p_w * 18) / (lev[:, None, None] * 100 * 28.9)
+                w = (p_w * 18) / ( ( lev[:, None, None] * 100 - p_w ) * 28.9)
+                q =  w / (w + 1)
                 _q[0, :, :, :] = q
 
     os.remove(tmp_filename)
