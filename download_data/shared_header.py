@@ -12,6 +12,9 @@ def pleaseRun(cmd):
 beg_time = datetime.datetime(2016,   11,  1)
 end_time = datetime.datetime(2022,   12, 31)
 
+beg_time = datetime.datetime(2017,   11,  1)
+end_time = datetime.datetime(2018,   12, 31)
+
 
 
 g0 = 9.81

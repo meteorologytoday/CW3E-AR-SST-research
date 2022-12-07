@@ -5,6 +5,25 @@ import os
 import re
 import sys
 
+
+# using August–Roche–Magnus formula as described in
+# https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation#August-Roche-Magnus_approximation
+def getSaturatedVaporPressure(TMP):
+
+    # in this formulation the temperature is in Celcius
+    TMP_degC = TMP - 273.15
+    p_es = 100 * 6.1094 * np.exp( 17.625 * TMP_degC / (TMP_degC + 243.04) ) # in Pa 
+   
+    return p_es
+
+
+def convertRHtoSpecificHumidity(RH, TMP, pres):
+    p_w = getSaturatedVaporPressure(TMP) * RH
+    w = (p_w * 18) / ( ( pres - p_w ) * 28.9)
+    q =  w / (w + 1)
+    return q
+    
+
 def pleaseRun(cmd):
     print(">> %s" % cmd)
     os.system(cmd)
@@ -87,10 +106,10 @@ def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT",
 
                 # The saturated vapor pressure formula is copied from wikipedia.
                 # https://en.wikipedia.org/wiki/Clausius%E2%80%93Clapeyron_relation
-                p_w = 1e5 * np.exp(-40700 / 8.31 * (1 / var_data["TMP"] - 1 / 373)) * var_data["RH"] / 100  # result in Pa
-                w = (p_w * 18) / ( ( lev[:, None, None] * 100 - p_w ) * 28.9)
-                q =  w / (w + 1)
-                _q[0, :, :, :] = q
+                _TMP = var_data["TMP"]
+                _RH  = var_data["RH"] / 100
+                _lev = lev[:, None, None] * 100
+                _q[0, :, :, :] = convertRHtoSpecificHumidity(_RH, _TMP, _lev)
 
     os.remove(tmp_filename)
 

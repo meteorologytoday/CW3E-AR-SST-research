@@ -9,12 +9,17 @@ exec(code)
 
 import requests
 import shutil
-from convert_GFS_output import convertGFSOutput
-from compute_AR import computeAR
 
-download_dir = "data/GFS/fcst"
+download_dir = "data/GFS/fcst_sfc"
 file_prefix = "GFS_0p25"
 fcst_hrs = [0, 240]
+
+fcst_hrs_avg = {
+    '0'   : [6, 12, 18, 24],   # the first 24 hrs (0-24hr) needs four files fcst_[006, 012, 018, 024] to compute the average fluxes
+    '240' : [252, 264],        # the 10-th day (240-264hr) needs two  files fcst_[252, 264] to compute the average fluxes
+}
+
+
 login_post = {
     'email'  : CFSR_email,
     'passwd' : CFSR_passwd,
@@ -22,7 +27,6 @@ login_post = {
 }
 
 shared_session = requests.Session()
-#shared_session.auth = (usr, pwd)
 
 def download(url, output, max_attempt=5):
 
@@ -87,15 +91,12 @@ class JOB:
         time_now_str = "%04d%02d%02d_f%03d" % (y, m, d, self.fcst_hr)
 
         tmp_nc_filename = "%s/%s_%s.nc.tmp" % (self.download_dir, self.file_prefix, time_now_str)
-                
         tmp_grb2_filenames = []
         tmp_grb2_filename_ave = "%s/%s_%s_ave.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str)
 
-        final_filename_AR  = "%s/%s_%s.AR.nc" % (self.download_dir, self.file_prefix, time_now_str)
-        final_filename_HGT500mb = "%s/%s_%s.HGT_500mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
-        final_filename_HGT850mb = "%s/%s_%s.HGT_850mb.nc" % (self.download_dir, self.file_prefix, time_now_str)
+        final_filename  = "%s/%s_%s.sfcflx.nc" % (self.download_dir, self.file_prefix, time_now_str)
 
-        already_exists = os.path.isfile(final_filename_AR) and os.path.isfile(final_filename_HGT500mb) and os.path.isfile(final_filename_HGT850mb)
+        already_exists = os.path.isfile(final_filename)
 
         if already_exists:
 
@@ -104,11 +105,18 @@ class JOB:
 
         else:
 
-            print("[%s] Now generate file: %s" % (time_now_str, ", ".join([final_filename_AR, final_filename_HGT500mb, final_filename_HGT850mb],)))
+            print("[%s] Now generate file: %s" % (time_now_str, final_filename_,))
 
             datetime_str = self.t.strftime("%Y%m%d")
+            needed_fcst_hrs = fcst_hrs_avg['%d' % self.fcst_hr]
+            urls = [
+                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, needed_fcst_hr) for _fcst_hr in needed_fcst_hrs
+            ]
+
             okay = True
-            for hr in [0, 6, 12, 18]:
+            needed_fcst_hrs = fcst_hrs_avg['%d' % self.fcst_hr]
+            for hr in needed_fcst_hrs:
+
                 tmp_grb2_filename = "%s/%s_%s_%02d.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str, hr)
                 url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s%02d.f%03d.grib2' % (y, datetime_str, datetime_str, hr, self.fcst_hr)
                 okay = okay and download(url, tmp_grb2_filename)
@@ -117,14 +125,13 @@ class JOB:
 
             if okay:
 
-                pleaseRun("gmerge - %s | wgrib2 -  -match ':(TMP|HGT|RH|UGRD|VGRD):[0-9]+ mb:' -ave 6hr %s" % (" ".join(tmp_grb2_filenames), tmp_grb2_filename_ave))
-                convertGFSOutput(tmp_grb2_filename_ave, tmp_nc_filename)
-                pleaseRun("ncks -O -d lat,0.0,65.0 %s %s" % (tmp_nc_filename, tmp_nc_filename))
+                interval_hrs = needed_fcst_hrs[1] - needed_fcst_hrs[0]
 
-                pleaseRun("ncks -O -v HGT -d lev,500.0,500.0 %s %s" % (tmp_nc_filename, final_filename_HGT500mb))
-                pleaseRun("ncks -O -v HGT -d lev,850.0,850.0 %s %s" % (tmp_nc_filename, final_filename_HGT850mb))
+                pleaseRun("gmerge - %s | wgrib2 -  -match ':(LHTFL|SHTFL|PRATE|UFLX|VFLX):surface:' -ave %dhr %s" % (interval_hrs, " ".join(tmp_grb2_filenames), tmp_grb2_filename_ave))
+                pleaseRun("wgrib2 %s -netcdf %s" % (tmp_grb2_filename_ave, tmp_nc_filename,))
+                pleaseRun("ncks -O -d lat,0.0,65.0 %s %s" % (tmp_nc_filename, final_filename))
 
-                computeAR(tmp_nc_filename, final_filename_AR)
+
             else:
 
                 print("Not okay. Skip.")
@@ -164,7 +171,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=3) as pool:
+with Pool(processes=1) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 

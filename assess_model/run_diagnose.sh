@@ -4,8 +4,8 @@ fcst=240
 method_skill=integrated
 #method_skill=pt-by-pt
 
-beg_date=2019-11-01
-end_date=2020-03-01
+beg_date=2018-11-01
+end_date=2019-03-01
 
 lat_min=30
 lat_max=50
