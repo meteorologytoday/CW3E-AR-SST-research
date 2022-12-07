@@ -29,7 +29,52 @@ def pleaseRun(cmd):
     os.system(cmd)
 
 
-def convertGFSOutput(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT", "RH", "TMP"], compute_specific_humidity=True):
+def convertGFSOutput_sfc(in_filename, out_filename):
+
+    tmp_filename = "%s.tmp" % (out_filename,)
+    pleaseRun("wgrib2 %s -netcdf %s" % (in_filename, tmp_filename,))
+
+    pattern = re.compile("(?P<VARNAME>[A-Za-z]+)_surface")
+    
+    with netCDF4.Dataset(tmp_filename, "r") as ds_tmp:
+
+        lat = ds_tmp.variables["latitude"][:]
+        lon = ds_tmp.variables["longitude"][:]
+
+        all_varnames = ds_tmp.variables.keys()
+
+        print(all_varnames) 
+
+        print("Outputting: ", out_filename)
+        with netCDF4.Dataset(out_filename, mode='w', format='NETCDF4_CLASSIC') as ds_out:
+
+            time_dim = ds_out.createDimension('time', None)
+            lat_dim  = ds_out.createDimension('lat', len(lat))
+            lon_dim  = ds_out.createDimension('lon', len(lon)) 
+
+
+            var_lat = ds_out.createVariable('lat', np.float32, ('lat',))
+            var_lon = ds_out.createVariable('lon', np.float32, ('lon',))
+            
+            var_lat[:] = lat
+            var_lon[:] = lon
+
+            for varname in all_varnames:
+                m = pattern.match(varname)
+                if m is None:
+                    print("Varname %s does not match." % (varname,))
+                    continue
+
+                trimmed_varname = m.group("VARNAME")
+                print("Varname %s is a surface field. Output it as %s." % (varname, trimmed_varname))
+                
+                _var = ds_out.createVariable(trimmed_varname, np.float32, ('time', 'lat', 'lon'))
+                _var[0, :, :] = ds_tmp.variables[varname][:]
+
+    os.remove(tmp_filename)
+
+
+def convertGFSOutput_AR(in_filename, out_filename, varnames=["UGRD", "VGRD", "HGT", "RH", "TMP"], compute_specific_humidity=True):
 
 
     tmp_filename = "%s.tmp" % (out_filename,)

@@ -9,7 +9,7 @@ exec(code)
 
 import requests
 import shutil
-from convert_GFS_output import convertGFSOutput
+from convert_GFS_output import convertGFSOutput_AR
 from compute_AR import computeAR
 
 download_dir = "data/GFS/fcst"
@@ -27,7 +27,7 @@ shared_session = requests.Session()
 def download(url, output, max_attempt=5):
 
 
-    needs_login = True
+    needs_login = False
     okay = False
 
     for attempt in range(max_attempt):
@@ -118,7 +118,7 @@ class JOB:
             if okay:
 
                 pleaseRun("gmerge - %s | wgrib2 -  -match ':(TMP|HGT|RH|UGRD|VGRD):[0-9]+ mb:' -ave 6hr %s" % (" ".join(tmp_grb2_filenames), tmp_grb2_filename_ave))
-                convertGFSOutput(tmp_grb2_filename_ave, tmp_nc_filename)
+                convertGFSOutput_AR(tmp_grb2_filename_ave, tmp_nc_filename)
                 pleaseRun("ncks -O -d lat,0.0,65.0 %s %s" % (tmp_nc_filename, tmp_nc_filename))
 
                 pleaseRun("ncks -O -v HGT -d lev,500.0,500.0 %s %s" % (tmp_nc_filename, final_filename_HGT500mb))

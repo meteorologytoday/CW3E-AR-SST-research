@@ -9,6 +9,7 @@ exec(code)
 
 import requests
 import shutil
+from convert_GFS_output import convertGFSOutput_sfc
 
 download_dir = "data/GFS/fcst_sfc"
 file_prefix = "GFS_0p25"
@@ -31,7 +32,7 @@ shared_session = requests.Session()
 def download(url, output, max_attempt=5):
 
 
-    needs_login = True
+    needs_login = False
     okay = False
 
     for attempt in range(max_attempt):
@@ -105,30 +106,33 @@ class JOB:
 
         else:
 
-            print("[%s] Now generate file: %s" % (time_now_str, final_filename_,))
+            print("[%s] Now generate file: %s" % (time_now_str, final_filename,))
 
             datetime_str = self.t.strftime("%Y%m%d")
-            needed_fcst_hrs = fcst_hrs_avg['%d' % self.fcst_hr]
-            urls = [
-                'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, needed_fcst_hr) for _fcst_hr in needed_fcst_hrs
-            ]
 
             okay = True
             needed_fcst_hrs = fcst_hrs_avg['%d' % self.fcst_hr]
-            for hr in needed_fcst_hrs:
+            for needed_fcst_hr in needed_fcst_hrs:
 
-                tmp_grb2_filename = "%s/%s_%s_%02d.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str, hr)
-                url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s%02d.f%03d.grib2' % (y, datetime_str, datetime_str, hr, self.fcst_hr)
+                url = 'https://rda.ucar.edu/data/ds084.1/%04d/%s/gfs.0p25.%s00.f%03d.grib2' % (y, datetime_str, datetime_str, needed_fcst_hr)
+
+                tmp_grb2_filename = "%s/%s_%s_%03d.grb2.tmp" % (self.download_dir, self.file_prefix, time_now_str, needed_fcst_hr)
+
+
                 okay = okay and download(url, tmp_grb2_filename)
                 
                 tmp_grb2_filenames.append(tmp_grb2_filename)
 
+            print("Ready to see if it is okay")
             if okay:
 
                 interval_hrs = needed_fcst_hrs[1] - needed_fcst_hrs[0]
 
-                pleaseRun("gmerge - %s | wgrib2 -  -match ':(LHTFL|SHTFL|PRATE|UFLX|VFLX):surface:' -ave %dhr %s" % (interval_hrs, " ".join(tmp_grb2_filenames), tmp_grb2_filename_ave))
-                pleaseRun("wgrib2 %s -netcdf %s" % (tmp_grb2_filename_ave, tmp_nc_filename,))
+                pleaseRun("gmerge - %s | wgrib2 -  -match ':(LHTFL|SHTFL|PRATE|UFLX|VFLX):surface:' -fcst_ave %dhr %s" % (" ".join(tmp_grb2_filenames), interval_hrs, tmp_grb2_filename_ave))
+                #pleaseRun("wgrib2 %s -netcdf %s" % (tmp_grb2_filename_ave, tmp_nc_filename,))
+                convertGFSOutput_sfc(tmp_grb2_filename_ave, tmp_nc_filename)
+
+                print("Now downscale")
                 pleaseRun("ncks -O -d lat,0.0,65.0 %s %s" % (tmp_nc_filename, final_filename))
 
 
@@ -171,7 +175,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=1) as pool:
+with Pool(processes=2) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 
