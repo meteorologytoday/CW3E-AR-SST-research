@@ -23,15 +23,21 @@ def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
         timestr = date.strftime("%Y%m%d")
         if varname in ["IWV", "IVT", "IWVKE"]:
             filename = "GFS_0p25_%s_f%03d.AR.nc" % (timestr, fcst)
+            subfolder = "fcst"
         elif varname == "HGT_500mb":
             filename = "GFS_0p25_%s_f%03d.HGT_500mb.nc" % (timestr, fcst)
+            subfolder = "fcst"
         elif varname == "HGT_850mb":
             filename = "GFS_0p25_%s_f%03d.HGT_850mb.nc" % (timestr, fcst)
+            subfolder = "fcst"
+        elif varname in ["LHTFL", "SHTFL", "PRATE", "UFLX", "VFLX"]:
+            filename = "GFS_0p25_%s_f%03d.sfcflx.nc" % (timestr, fcst)
+            subfolder = "fcst_sfc"
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )
 
 
-        filename = os.path.join(root_dir, "GFS", "fcst", filename)
+        filename = os.path.join(root_dir, "GFS", subfolder, filename)
         idx = 0
         lat = "lat"
         lon = "lon"

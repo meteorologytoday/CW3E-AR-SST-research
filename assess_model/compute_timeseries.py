@@ -13,13 +13,12 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--beg-date', type=str, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--end-date', type=str, help='Date string: yyyy-mm-dd', required=True)
+parser.add_argument('--output-dir', type=str, help='Output directory', default="output_ts")
 parser.add_argument('--fcst',     type=int, help='Forecast hours', default=240)
 parser.add_argument('--products', type=str, nargs="+", help='Forcast products.', default=["GFS",])
-parser.add_argument('--output-dir', type=str, help='Output directory.', default="")
-parser.add_argument('--no-display', action="store_true")
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--save-npz', type=str, help='Save the timeseries into an npz file', default="")
+parser.add_argument('--save', action="store_true", help='Save the timeseries into an npz file')
 
 
 args = parser.parse_args()
@@ -36,9 +35,6 @@ fcst_time = timedelta(hours=args.fcst)
 fcst_beg_date = beg_date - fcst_time
 fcst_end_date = end_date - fcst_time
 
-
-
-
 total_days = (end_date - beg_date).days
 
 
@@ -49,19 +45,17 @@ print("Total days: ", total_days)
 if total_days <= 0:
     raise Exception("No days are avaiable.")
 
-data_good = np.ones((total_days,))
 
-AR_vars = ["IWV", "IVT", "IWVKE", "HGT_850mb", "HGT_500mb"]
 
-skills = {
-    'pt-by-pt': {},
-    'integrated' : {},
-}
+AR_vars = ["IWV", "IVT", "IWVKE", "HGT_850mb", "HGT_500mb", "LHTFL", "SHTFL", "PRATE"]
 
-for k, _dict in skills.items():
-    
-    for AR_var in AR_vars:
-        skills[k][AR_var] = np.zeros((2, total_days,)) # first index: [0=obs, 1=fcst], second index: days
+data_good = np.ones((total_days, len(AR_vars)))
+
+
+ts = {}
+
+for AR_var in AR_vars:
+    ts[AR_var] = np.zeros((2, total_days,)) # first index: [0=obs, 1=fcst], second index: days
 
 # Prep
 datas = {}
@@ -79,12 +73,13 @@ wgt = None
 
 # Load data
 for d in range(total_days):
+        
+    _t = beg_date + timedelta(days=d)
+        
+    for i, varname in enumerate(AR_vars):
 
-    try:
+        try:
 
-        _t = beg_date + timedelta(days=d)
-
-        for varname in AR_vars:
             if varname in [ "HGT_500mb" , "HGT_850mb" ]:
                 load_varname = "HGT"
             else:
@@ -138,30 +133,30 @@ for d in range(total_days):
             # compute skill
             #_diff = _data['fcst'] - _data['obs']
 
-            skills['pt-by-pt'][varname][0, d]  = np.average(np.average( _data['obs'],  axis=1), weights=wgt)
-            skills['pt-by-pt'][varname][1, d]  = np.average(np.average( _data['fcst'], axis=1), weights=wgt)
+            ts[varname][0, d] = np.average(np.average( _data['obs'], axis=1), weights=wgt)
+            ts[varname][1, d] = np.average(np.average( _data['fcst'], axis=1), weights=wgt)
 
-            skills['integrated'][varname][0, d] = np.average(np.average( _data['obs'], axis=1), weights=wgt)
-            skills['integrated'][varname][1, d] = np.average(np.average( _data['fcst'], axis=1), weights=wgt)
+        except Exception as e:
 
-    except Exception as e:
+            print(traceback.format_exc()) 
+            print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
-        print(traceback.format_exc()) 
-        print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+            data_good[d, i] = 0.0
 
-        data_good[d] = 0.0
-
-for AR_var in AR_vars:
-    skills['pt-by-pt'][AR_var][:, data_good == 0.0] = np.nan
-    skills['integrated'][AR_var][:, data_good == 0.0] = np.nan
+for i, AR_var in enumerate(AR_vars):
+    data_good_idx = data_good[:, i] == 0.0
+    ts[AR_var][:, data_good_idx] = np.nan
 
 
 t_vec = np.array([ beg_date + timedelta(days=d) for d in range(total_days)], dtype="datetime64[s]")
 
 
-if args.save_npz != "":
-    for method in skills.keys():
-        np.savez("%s.%s" % (args.save_npz, method), time=t_vec, **skills[method])
+if args.save:
+
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    filename = "output_ts/%s_%s_f%03d.npz" % (beg_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), args.fcst)
+    print("Output: %s" % (filename,))
+    np.savez(filename, time=t_vec, **ts)
 
 """
 #print(lat)

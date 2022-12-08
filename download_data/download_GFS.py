@@ -14,7 +14,7 @@ from compute_AR import computeAR
 
 download_dir = "data/GFS/fcst"
 file_prefix = "GFS_0p25"
-fcst_hrs = [0, 240]
+fcst_hrs = [0, 120, 240]
 login_post = {
     'email'  : CFSR_email,
     'passwd' : CFSR_passwd,

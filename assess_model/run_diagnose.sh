@@ -1,20 +1,19 @@
 #!/bin/bash
 
-fcst=240
-method_skill=integrated
-#method_skill=pt-by-pt
+beg_date=2017-11-01
+end_date=2018-03-01
+#end_date=2017-12-01
 
-beg_date=2018-11-01
-end_date=2019-03-01
-
-lat_min=30
+lat_min=20
 lat_max=50
 #lon_min=220
-lon_min=210
-lon_max=235
+lon_min=$(( 360 - 170 ))
+lon_max=$(( 360 - 130 ))
 
 AR_npz=AR.npz
-skill_npz=skill
+AR_glue_threshold=24
+ts_npz_f120="output_ts/${beg_date}_${end_date}_f120.npz"
+ts_npz_f240="output_ts/${beg_date}_${end_date}_f240.npz"
 
 #if [ ] ; then
 python3 plot_rectangular.py \
@@ -35,24 +34,33 @@ python3 detect_AR.py \
     --lon-rng $lon_min $lon_max \
     --save-npz $AR_npz \
 
-
 #if [ ] ; then
 
-python3 plot_skills.py   \
+python3 compute_timeseries.py   \
     --beg-date=$beg_date \
     --end-date=$end_date \
-    --fcst=$fcst         \
+    --fcst=120           \
     --lat-rng $lat_min $lat_max \
     --lon-rng $lon_min $lon_max \
-    --save-npz $skill_npz \
-    --no-display
+    --save
+
+python3 compute_timeseries.py   \
+    --beg-date=$beg_date \
+    --end-date=$end_date \
+    --fcst=240           \
+    --lat-rng $lat_min $lat_max \
+    --lon-rng $lon_min $lon_max \
+    --save
+
 
 #fi
 
 python3 plot_skills_and_AR.py \
-    --AR-npz=$AR_npz \
-    --skill-npz=$skill_npz.$method_skill.npz  \
-    --output=AR_skill.png   
+    --AR-npz $AR_npz \
+    --ts-npz "5d" $ts_npz_f120 "10d" $ts_npz_f240 \
+    --lines  "blue" "solid" "red" "solid"         \
+    --AR-glue-threshold $AR_glue_threshold \
+    --output AR_ts_${beg_date}_${end_date}.png   
 #fi
 
 wait 

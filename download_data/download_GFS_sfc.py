@@ -13,10 +13,11 @@ from convert_GFS_output import convertGFSOutput_sfc
 
 download_dir = "data/GFS/fcst_sfc"
 file_prefix = "GFS_0p25"
-fcst_hrs = [0, 240]
+fcst_hrs = [0, 120, 240]
 
 fcst_hrs_avg = {
     '0'   : [6, 12, 18, 24],   # the first 24 hrs (0-24hr) needs four files fcst_[006, 012, 018, 024] to compute the average fluxes
+    '120' : [126, 132, 138, 144],  # the 5th day (120-144hr) needs four files fcst_[126, 132, 138, 144] to compute the average fluxes
     '240' : [252, 264],        # the 10-th day (240-264hr) needs two  files fcst_[252, 264] to compute the average fluxes
 }
 
