@@ -1,7 +1,7 @@
 import numpy as np
 import load_data
 import netCDF4
-from datetime import (datetime, timedelta)
+from datetime import (datetime, timedelta, timezone)
 import traceback
 from pathlib import Path
 import argparse
@@ -27,8 +27,8 @@ print(args)
 
 # Configuration
 
-beg_date = datetime.strptime(args.beg_date, "%Y-%m-%d")
-end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+beg_date = datetime.strptime(args.beg_date, "%Y-%m-%d", tzinfo=timezone.utc)
+end_date = datetime.strptime(args.end_date, "%Y-%m-%d", tzinfo=timezone.utc)
 
 fcst_time = timedelta(hours=args.fcst)
 

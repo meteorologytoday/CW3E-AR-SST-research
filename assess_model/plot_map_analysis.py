@@ -8,16 +8,11 @@ from pathlib import Path
 import argparse
 
 parser = argparse.ArgumentParser(
-                    prog = 'plot_skill',
-                    description = 'Plot prediction skill of GFS on AR.',
+                    prog = 'plot_map',
+                    description = 'Plot the analysis of AR event. Including IVT, IWV, H850, LHTFL.',
 )
-parser.add_argument('--AR-glue-threshold', type=int, help='AR glue threshold in hours.', default=0)
 
-parser.add_argument('--AR-npz', type=str, help='Save the timeseries into an npz file', required=True)
-parser.add_argument('--ts-npz', type=str, nargs="+", help='Have to be a pair: label, filename.', required=True)
-parser.add_argument('--lines', type=str, nargs="+", help='Have to be a pair: linecolor, linestyle.', default=["red", "solid"])
-parser.add_argument('--output', type=str, help='Output directory.', default="")
-parser.add_argument('--no-display', action="store_true")
+parser.add_argument('--AR-glue-threshold', type=int, help='AR glue threshold in hours.', default=0)
 
 args = parser.parse_args()
 

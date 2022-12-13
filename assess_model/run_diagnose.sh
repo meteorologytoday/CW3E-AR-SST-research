@@ -4,6 +4,9 @@ beg_date=2017-11-01
 end_date=2018-03-01
 #end_date=2017-12-01
 
+beg_date=2018-11-01
+end_date=2019-03-01
+#
 lat_min=20
 lat_max=50
 #lon_min=220

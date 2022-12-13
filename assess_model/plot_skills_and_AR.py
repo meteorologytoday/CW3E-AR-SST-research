@@ -134,7 +134,7 @@ fig, ax = plt.subplots(len(AR_vars), 1, figsize=(12, 4*len(AR_vars)), sharex=Tru
 
 t_segs = AR_tools.detectAbove(t_AR, AR_data["IVT"], 250, glue_threshold=timedelta(hours=args.AR_glue_threshold))
 
-analysis_plotted = np.zeros((len(ts_data.keys()),))
+analysis_plotted = np.zeros((len(AR_vars),))
 for i, AR_var in enumerate(AR_vars):
 
     print("Plot %s" % (AR_var,))
