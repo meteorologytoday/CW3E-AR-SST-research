@@ -9,7 +9,7 @@ def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
     
     if product == "ERA5":
 
-        if varname in ["sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mvimd", "t2m", "u10", "v10",] :
+        if varname in ["sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10",] :
             subfolder = "sfc"
             filename = "ERA5_sfc_%s.nc" % (date.strftime("%Y-%m-%d"))
         elif varname in ["IWV", "IVT", "IWVKE"]:

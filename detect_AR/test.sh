@@ -1,0 +1,6 @@
+hello () {
+    echo "HIIII"
+}
+
+
+hello

@@ -1,6 +1,22 @@
 import numpy as np
 from datetime import datetime
 
+def findTimeInd(t, t_segs):
+    
+    t_inds = np.zeros((len(t_segs), len(t),), dtype=bool)
+    
+    for i, t_seg in enumerate(t_segs):
+        
+        for j, _t in enumerate(t):
+            
+            if (_t > t_seg[0]) and (_t < t_seg[1]): 
+
+                t_inds[i, j] = True
+        
+
+    return t_inds
+    
+
 def glue(t_segs, glue_threshold):
 
     # first, test each gaps
@@ -47,12 +63,14 @@ def detectAbove(_t, x, x_threshold, glue_threshold=0):
     #    raise Exception("Time cannot contain NaN")
 
 
+    # convert everything into real number
     dtype_t = type(_t[0])
 
     if dtype_t is datetime:
         t = [ _tt.timestamp() for _tt in _t ]
     else:
         t = _t
+
 
     above = x >= x_threshold
 
@@ -64,10 +82,7 @@ def detectAbove(_t, x, x_threshold, glue_threshold=0):
 
     t_seg = [np.nan, np.nan]
     for i in range(len(x)):
-
-        if not np.isfinite(x[i]):
-            continue
-
+            
         if flag is False:
                     
             if x[i] >= x_threshold:
@@ -110,5 +125,6 @@ def detectAbove(_t, x, x_threshold, glue_threshold=0):
     
         
     t_segs = glue(t_segs, glue_threshold)
-    
-    return t_segs 
+    t_inds = findTimeInd(_t, t_segs)   
+ 
+    return t_segs, t_inds

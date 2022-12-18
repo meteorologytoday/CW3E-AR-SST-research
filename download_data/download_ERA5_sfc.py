@@ -102,7 +102,7 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
-    if 4 <= new_d.month and new_d.month <= 10 :
+    if 5 <= new_d.month and new_d.month <= 10 :
         continue
     
     jobs.append(JOB(new_d))
@@ -114,7 +114,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=4) as pool:
+with Pool(processes=1) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 

@@ -18,35 +18,42 @@ parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
 
-data = {}
+data = {
+    "ttl" : {},
+    "clim" : {},
+    "anom" : {},
+}
 AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mvimd", "t2m", "u10", "v10", "U"]
-AR_varnames = ["IWV", "IVT", "sst", "msnswrf", "U"]
+
+AR_varnames = ["IVT", "sst", "U", "mtpr", ]#"mer"]
 
 with netCDF4.Dataset(args.input, "r") as ds:
+    
+    for AR_varname in AR_varnames:
+        for k, subdata in data.items():
+            subdata[AR_varname] = ds.variables["%s_%s" % (AR_varname, k)][:]
 
-    for AR_varname in AR_varnames + ['time']:
-        data[AR_varname] = ds.variables[AR_varname][:]
+    for varname in ["time", "time_clim",]:
+        t = ds.variables[varname][:]
+        data[varname] = [ datetime.fromtimestamp(_t) for _t in t]
 
-data['time'] = [ datetime.fromtimestamp(data['time'][i]).replace(tzinfo=timezone.utc) for i in range(len(data['time'])) ]
+    #data['time_clim'] = data['time_clim'][:]
+    #data['time'] = data['time'][:]
+
+data['ttl']['IVT'][np.isnan(data['ttl']['IVT'])] = 0.0
 
 
-data['IVT'][np.isnan(data['IVT'])] = 0.0
+AR_t_segs, AR_t_inds = AR_tools.detectAbove(data['time'], data['ttl']['IVT'], 250.0, glue_threshold=timedelta(hours=24))
 
-AR_t_segs = AR_tools.detectAbove(data['time'], data['IVT'], 250.0, glue_threshold=timedelta(hours=24))
 
+# Find correct indices
 for i, AR_t_seg in enumerate(AR_t_segs):
-
     print("[%d] : %s to %s" % (i, AR_t_seg[0].strftime("%Y-%m-%d"), AR_t_seg[1].strftime("%Y-%m-%d")))
-
-
-data_decompose = {
-    'mean' : {},
-    'anom' : {},
-}
-
-for AR_varname in AR_varnames:
-
-    data_decompose['mean'][AR_varname], data_decompose['anom'][AR_varname], cnt = anomalies.decomposeClimAnom(data['time'], data[AR_varname])
+    
+    
+print("List detected AR events:")
+for i, AR_t_seg in enumerate(AR_t_segs):
+    print("[%d] : %s to %s" % (i, AR_t_seg[0].strftime("%Y-%m-%d"), AR_t_seg[1].strftime("%Y-%m-%d")))
 
 
 # Plot data
@@ -102,8 +109,6 @@ var_infos = {
 
 fig, ax = plt.subplots(len(AR_varnames), 1, figsize=(12, 4*len(AR_varnames)), sharex=True)
 
-analysis_plotted = np.zeros((len(AR_varnames),))
-
 for i, AR_varname in enumerate(AR_varnames):
 
     print("Plot %s" % (AR_varname,))
@@ -112,25 +117,36 @@ for i, AR_varname in enumerate(AR_varnames):
     trans = transforms.blended_transform_factory(_ax.transData, _ax.transAxes)
         
     for k, t_seg in enumerate(AR_t_segs):
-        _ax.add_patch( Rectangle((t_seg[0], 0), t_seg[1] - t_seg[0], 1, fc ='#cccccc', ec='none', transform=trans, zorder=1)) 
 
+        ind = AR_t_inds[k, :] == True
+       
+        dt = t_seg[1] - t_seg[0] 
+        if dt.total_seconds() < 86400*3:
+            continue
 
-     
-    if AR_varname in ["IVT",]:
+        _IVT = data['ttl']['IVT'][ind]
 
-        _ax.plot(data['time'], data[AR_varname], color='black', linestyle='solid', linewidth=1, label=AR_varname)
+        _time = np.array(data["time"])[ind]
+        _ind0 = np.argmax(_IVT)
+        _time0 = _time[_ind0]
 
-    else: 
-        
-        _ax.plot(data['time'], data_decompose['anom'][AR_varname], color='black', linestyle='solid', linewidth=1, label=AR_varname)
-        
+        _time_aligned_day = np.array([ _t.total_seconds() for _t in (_time - _time0) ])/86400.0
+
+        if AR_varname in ["IVT",]:
+
+            _ax.plot(_time_aligned_day, data['ttl'][AR_varname][ind], color='gray', linestyle='solid', linewidth=1)
+
+        else: 
+            #_ax.plot(_time_aligned_day, data['ttl'][AR_varname][ind], color='gray', linestyle='solid', linewidth=1)
+            
+            _ax.plot(_time_aligned_day, data['ttl'][AR_varname][ind], color='gray', linestyle='solid', linewidth=1)
+            
 
   
     #_ax.set_title("Forecast error of %s" % (AR_var, ))
     #_ax.set_ylabel("%s\n%s" % (AR_var, var_infos[AR_var]['label']))
     _ax.set_ylabel("%s" % (AR_varname,))
-
-    _ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+    #_ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
 
     _ax.legend()
 
@@ -140,6 +156,9 @@ if not args.no_display:
 if args.output != "":
     
     fig.savefig(args.output, dpi=200)
+
+
+
 
 
 

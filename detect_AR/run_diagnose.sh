@@ -1,37 +1,58 @@
 #!/bin/bash
 
-beg_date=2015-05-01
-end_date=2020-05-01
-end_date=2015-12-31
-#
-lat_min=35
-lat_max=40
-#lon_min=220
-lon_min=$(( 360 - 140 ))
-lon_max=$(( 360 - 135 ))
+. pretty_latlon.sh
 
-output_dir=output
+beg_year=2001
+end_year=2022
 
-mkdir -p $output_dir
+
+
+spatial_rng=(
+    30 50 -160 -130
+    30 40 -160 -145
+    30 40 -145 -130
+    40 50 -160 -145
+    40 50 -145 -130
+)
 
 if [ ] ; then
-python3 plot_rectangular.py \
-    --lat-rng $lat_min $lat_max \
-    --lon-rng $lon_min $lon_max \
-    --plot-lat-rng 0 70         \
-    --plot-lon-rng 180 270      \
-    --output AR_region.png  &
-
-
 python3 count_days_map.py \
     --beg-date=$beg_date \
     --end-date=$end_date \
-    --output $output_dir/AR_days.nc
-
+    --output $output_dir/AR_days.nc    &
 fi
-python3 construct_timeseries.py \
-    --beg-date=$beg_date \
-    --end-date=$end_date \
-    --lat-rng $lat_min $lat_max \
-    --lon-rng $lon_min $lon_max \
-    --output $output_dir/AR.nc
+
+for i in $( seq 1 $(( "${#spatial_rng[@]}" / 4 )) ); do
+
+    lat_min=${spatial_rng[$(( ( i - 1 ) * 4 + 0 ))]}
+    lat_max=${spatial_rng[$(( ( i - 1 ) * 4 + 1 ))]}
+    lon_min=${spatial_rng[$(( ( i - 1 ) * 4 + 2 ))]}
+    lon_max=${spatial_rng[$(( ( i - 1 ) * 4 + 3 ))]}
+
+    time_str=$( printf "%04d-%04d" $beg_year $end_year )
+    spatial_str=$( printf "%s-%s_%s-%s" $( pretty_lat $lat_min ) $( pretty_lat $lat_max ) $( pretty_lon $lon_min ) $( pretty_lon $lon_max )  )
+    output_dir=output/${time_str}_${spatial_str}
+
+    echo "time_str    : $time_str"    
+    echo "spatial_str : $spatial_str"
+    echo "output_dir  : $output_dir"
+
+    mkdir -p $output_dir
+
+
+    python3 plot_rectangular.py \
+        --lat-rng $lat_min $lat_max \
+        --lon-rng $lon_min $lon_max \
+        --plot-lat-rng 0 70         \
+        --plot-lon-rng 180 270      \
+        --output $output_dir/AR_region.png  &
+
+
+    python3 construct_timeseries.py \
+        --beg-year=$beg_year \
+        --end-year=$end_year \
+        --lat-rng $lat_min $lat_max \
+        --lon-rng $lon_min $lon_max \
+        --output-dir $output_dir
+
+done

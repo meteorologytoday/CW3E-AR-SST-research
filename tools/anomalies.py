@@ -7,12 +7,17 @@ def doy_noleap(t):
 
     return int(ref_t.strftime('%j'))
 
+def doy_leap(t):
+    ref_t = datetime.datetime(2020, t.month, t.day)
+    return int(ref_t.strftime('%j'))
+
+
 
 def decomposeClimAnom(ts, xs):
 
-    new_t    = np.zeros((365,))
-    xm       = np.zeros((len(new_t),))
-    cnt      = np.zeros((len(new_t),), dtype=int)
+    tm    = np.zeros((365,))
+    xm       = np.zeros((len(tm),))
+    cnt      = np.zeros((len(tm),), dtype=int)
 
     for i, t in enumerate(ts):
 
@@ -44,4 +49,4 @@ def decomposeClimAnom(ts, xs):
 
 
    
-    return xm, xa, cnt
+    return tm, xm, xa, cnt
