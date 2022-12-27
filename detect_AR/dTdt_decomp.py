@@ -62,7 +62,7 @@ def findlast(a):
 
 def within(a, m, M):
 
-    return m <= a and a <= M
+    return m <= a and a < M
 
     #data['time_clim'] = data['time_clim'][:]
     #data['time'] = data['time'][:]
@@ -272,6 +272,11 @@ else:
 fig, ax = plt.subplots(rows, cols, figsize=(6*cols, 5*rows), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4))
 
 ax_flat = ax.flatten()
+    
+
+test_data = collectData(AR_evts, dict(picked='do_linregress'))
+
+fig.suptitle("AR duration time range to do linear regression: %d - %d days\n# of cases = %d" % (args.AR_dt_rng[0], args.AR_dt_rng[1], np.sum(test_data['picked']==True)))
 
 for i, _plot_data in enumerate(plot_data):
 
@@ -298,13 +303,11 @@ for i, _ax in enumerate(ax_flat):
     if i > len(plot_data)-1 or plot_data[i] is None: 
         fig.delaxes(_ax)
 
-plt.show()
-
-
 
 if not args.no_display:
     plt.show()
 
 if args.output != "":
+    print("Output figure: %s" % args.output)
     fig.savefig(args.output, dpi=200)
 

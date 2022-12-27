@@ -161,7 +161,7 @@ for cnt in range(total_days):
 
     print("cnt=%d, timestr=%s" % (cnt, timestr,))
 
-    if new_t.month <=10 and new_t.month >=5:
+    if new_t.month <= 9 and new_t.month >=4:
         continue
 
     for fcst_hr in fcst_hrs:

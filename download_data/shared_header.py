@@ -9,7 +9,7 @@ def pleaseRun(cmd):
     print(">> %s" % cmd)
     os.system(cmd)
 
-beg_time = datetime.datetime(2000,   11,  1)
+beg_time = datetime.datetime(1990,   10,  1)
 end_time = datetime.datetime(2022,   12, 31)
 
 

@@ -167,7 +167,7 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
-    if 5 <= new_d.month and new_d.month <= 10 :
+    if 5 <= new_d.month and new_d.month <= 9 :
         continue
     
     jobs.append(JOB(new_d))

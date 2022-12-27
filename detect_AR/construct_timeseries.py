@@ -19,6 +19,7 @@ parser.add_argument('--output-dir', type=str, help='Output directory', default="
 parser.add_argument('--products', type=str, nargs="+", help='Forcast products.', default=["GFS",])
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
+parser.add_argument('--mld', type=str, help='The mixed layer specifier. Can be `50` or `95`', choices=['50', '95'], required=True)
 parser.add_argument('--save', action="store_true", help='Save the timeseries into an npz file')
 
 
@@ -28,8 +29,8 @@ print(args)
 
 # Configuration
 
-beg_date = datetime(args.beg_year-1, 11,  1 )
-end_date = datetime(args.end_year,    5,  1 )
+beg_date = datetime(args.beg_year-1, 10,  1 )
+end_date = datetime(args.end_year,    4,  1 )
 
 total_days = (end_date - beg_date).days
 
@@ -81,7 +82,7 @@ MLD_info = {
         'varname'  : 'depth_50',
     } 
 
-}['95']
+}[args.mld]
 
 
 print("Load file: ", MLD_info['filename'])
@@ -129,6 +130,9 @@ for d in range(total_days):
     for i, varname in enumerate(AR_varnames):
 
         try:
+
+            if _t.month in [4, 5, 6, 7, 8, 9]:
+                raise Exception("We do not this time of data.")
 
             load_varname = varname
 
@@ -209,13 +213,13 @@ rm_years = []
 needed_missing_dates = np.zeros((len(missing_dates),), dtype=bool)
 for i, missing_date in enumerate(missing_dates):
 
-    if missing_date.month in [11, 12]:
+    if missing_date.month in [10, 11, 12]:
         
         rm_years.append(missing_date.year+1)
         needed_missing_dates[i] = True
 
 
-    elif missing_date.month in [1, 2, 3, 4]:
+    elif missing_date.month in [1, 2, 3]:
         
         rm_years.append(missing_date.year)
         needed_missing_dates[i] = True
