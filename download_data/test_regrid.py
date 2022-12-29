@@ -9,7 +9,7 @@ lon = ds.variables['longitude'][:]
 data = ds.variables['sst'][:]
 imask = np.logical_not(data.mask).astype(np.int32)
 
-grid_tools.genSCRIPFileWithCornerMissing_regular(lat=lat, lon=lon, imask=imask, output_filename="grid_ECMWF.nc")
+grid_tools.genSCRIPFileWithCornerMissing_regular(lat=lat, lon=lon, imask=imask, output_filename="grid_ECMWF.nc", rev_lat=True)
 
 print("done")
 

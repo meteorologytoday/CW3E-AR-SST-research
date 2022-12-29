@@ -22,10 +22,11 @@ def calMidLon(lon1, lon2):
     return mid_lon
     
 
-def genSCRIPFileWithCornerMissing_regular(output_filename, lat, lon, imask):
+def genSCRIPFileWithCornerMissing_regular(output_filename, lat, lon, imask, rev_lat=False, rev_lon=False):
   
     lat = np.array(lat) 
     lon = np.array(lon) % 360
+
 
     imask = np.array(imask)
  
@@ -74,7 +75,19 @@ def genSCRIPFileWithCornerMissing_regular(output_filename, lat, lon, imask):
             grid_corner_lon[j, i, 3] = lon_W
 
 
-            #print(grid_corner_lon[j, i, :])    
+    if rev_lon:
+        print("rev_lon is True. Reverse the points...")
+        grid_corner_lon[:, :, 0], grid_corner_lon[:, :, 1] = grid_corner_lon[:, :, 1], grid_corner_lat[:, :, 0]
+        grid_corner_lon[:, :, 2], grid_corner_lon[:, :, 3] = grid_corner_lon[:, :, 3], grid_corner_lat[:, :, 2]
+
+
+    if rev_lat:
+        print("rev_lat is True. Reverse the points...")
+        grid_corner_lat[:, :, 0], grid_corner_lat[:, :, 3] = grid_corner_lat[:, :, 3], grid_corner_lat[:, :, 0]
+        grid_corner_lat[:, :, 1], grid_corner_lat[:, :, 2] = grid_corner_lat[:, :, 2], grid_corner_lat[:, :, 1]
+
+    if np.any(grid_corner_lat[:, :, 0] > grid_corner_lat[:, :, 3]) or np.any(grid_corner_lat[:, :, 1] > grid_corner_lat[:, :, 2]):
+        raise Exception("Something is wrong") 
 
     writeSCRIPFile(output_filename, grid_center_lat, grid_center_lon, grid_corner_lat, grid_corner_lon, imask)
 
@@ -132,7 +145,7 @@ def writeSCRIPFile(filename, grid_center_lat, grid_center_lon, grid_corner_lat, 
     Ny, Nx, grid_corners = np.array(grid_corner_lat).shape
 
     grid_size =  Ny * Nx
-    grid_dims = [Ny, Nx]    
+    grid_dims = [Nx, Ny] 
     grid_rank = 2
 
     with netCDF4.Dataset(filename, mode='w', format='NETCDF4_CLASSIC') as ds: 
