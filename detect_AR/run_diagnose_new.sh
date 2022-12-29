@@ -31,7 +31,7 @@ spatial_rngs=(
 )
 
 AR_dt_rngs=(
-   5 50
+   0 50
 )
 
 

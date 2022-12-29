@@ -18,12 +18,12 @@ def calDeltaOnlyU(h, U10):
     
     u_star = calu_star(U10)
 
-    Delta = 2 * NK_m * u_star**3 / h
+    Delta = 2 * NK_m * u_star**3 / h**2
 
     return Delta
 
 
-def calDelta(h, U10, sfhf, pme, F_sol):
+def cal_hdbwe(h, U10, sfhf, pme, F_sol):
     
     # shfh : surface heat fluxes = longwave + sensible + latent (positive upwards)
     # pme  : Precipitation minus evaporation rate (kg / s)
@@ -34,9 +34,27 @@ def calDelta(h, U10, sfhf, pme, F_sol):
     u_star = calu_star(U10)
     B = calB(h, wb_prime, zeta, F_sol)
 
-    Delta = (2 * NK_m * u_star**3 - 0.5 * h * ( (1 - NK_n) * abs(B) + (1 + NK_n) * B ) ) / h
+    return 2 * NK_m * u_star**3 - 0.5 * h * ( (1 - NK_n) * abs(B) + (1 + NK_n) * B )
 
-    return Delta
+
+def cal_we(h, U10, sfhf, pme, F_sol, db):
+    
+    # shfh : surface heat fluxes = longwave + sensible + latent (positive upwards)
+    # pme  : Precipitation minus evaporation rate (kg / s)
+    # F_sol : Shortwave radiation (positive downward)
+    
+    return cal_hdbwe(h, U10, sfhf, pme, F_sol) / ( h * db )
+
+
+def cal_dSST_deepen(h, U10, sfhf, pme, F_sol, db, dT):
+    
+    # shfh : surface heat fluxes = longwave + sensible + latent (positive upwards)
+    # pme  : Precipitation minus evaporation rate (kg / s)
+    # F_sol : Shortwave radiation (positive downward)
+
+    return cal_we(h, U10, sfhf, pme, F_sol, db) * dT / h 
+
+
 
 def calu_star(U10):
  

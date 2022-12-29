@@ -28,7 +28,7 @@ data = {
 
 data_dim = {}
 
-AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD"]
+AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "hdb", "dT", "db"]
 
 
 
@@ -54,7 +54,9 @@ with netCDF4.Dataset(args.input, "r") as ds:
         NK_pme  = subdata['mtpr'] + subdata['mer']  # positive means raining
      
         if k == "ttl": 
-            subdata['Delta'] = NK_tools.calDelta(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf']) 
+            #subdata['dSST_deepen'] = NK_tools.cal_dSST_deepen(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf'], subdata['db'], subdata['dT']) 
+            #subdata['dSST_deepen'] = NK_tools.cal_we(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf'], subdata['db']) 
+            subdata['dSST_deepen'] = NK_tools.cal_hdbwe(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf']) 
             subdata['DeltaOnlyU'] = NK_tools.calDeltaOnlyU(subdata["MLD"], subdata["U"])
 
     
@@ -121,8 +123,10 @@ for k, t_seg in enumerate(AR_t_segs):
     
     AR_evt['U*ao_Tdiff']  = np.mean( (data['ttl']['t2m'][ind] - data['ttl']['sst'][ind]) * data['ttl']['U'][ind])
     
-    AR_evt['Delta']      = np.mean(data['ttl']['Delta'][ind])
+    #AR_evt['Delta']      = np.mean(data['ttl']['Delta'][ind])
     AR_evt['DeltaOnlyU'] = np.mean(data['ttl']['DeltaOnlyU'][ind])
+    
+    AR_evt['dSST_deepen'] = np.mean(data['ttl']['dSST_deepen'][ind])
     
     AR_evt['mean_IVT'] = np.mean(data['ttl']['IVT'][ind])
     AR_evt['max_IVT']  = np.amax(data['ttl']['IVT'][ind])
@@ -212,6 +216,12 @@ var_infos = {
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
+    'dSST_deepen' : {
+        'var'  : "$\dot{T}_\\mathrm{ent}$",
+        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    },
+
+
     'U' : {
         'var'  : "$\\left|\\vec{U}_{10}\\right|$",
         'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
@@ -266,14 +276,10 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
     print("Number of data points: %d" % (len(X),))
 
-#plot_data = [
-#    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',     'dTdt_no_sfchf'), ('dt',      'mean_IVT'),
-#    ('dTdt', 'dTdt_no_sfchf'), None,                            ('Delta', 'dTdt_no_sfchf'), ('max_IVT', 'mean_IVT')
-#]
 
 plot_data = [
-    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',     'dTdt_no_sfchf'), 
-    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('Delta', 'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',           'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('dSST_deepen', 'dTdt_no_sfchf'), 
 ]
 
 
