@@ -21,6 +21,16 @@ AR_dt_rngs=(
     0 5
 )
 
+# Testing
+spatial_rngs=(
+    30 50 -160 -130
+)
+
+AR_dt_rngs=(
+   5 50
+)
+
+
 
 if [ ] ; then
 python3 count_days_map.py \
@@ -73,6 +83,13 @@ for mld in 95 50 ; do
                 --mld $mld \
                 --output-dir $output_dir
         fi
+        
+        #if [ ] ; then
+        output_AR_evts_database=$output_dir/AR_evts.csv
+        echo "Generating analysis: $output_AR_evts_database"
+        python3 dTdt_decomposition_and_output.py --input $output_AR_file --output "$output_AR_evts_database"
+        
+        #fi
 
         for j in $( seq 1 $(( "${#AR_dt_rngs[@]}" / 2 )) ); do
 
@@ -82,7 +99,7 @@ for mld in 95 50 ; do
             output_AR_analysis_fig=$output_dir/analysis_${AR_dt_min}-${AR_dt_max}.png
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_decomp.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --no-display
+            python3 dTdt_decomp.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" #--no-display
 
         done
     done

@@ -10,4 +10,5 @@
 *.npz
 *.txt
 *.log
+*.zip
 __pycache__/

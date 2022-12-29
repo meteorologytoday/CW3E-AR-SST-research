@@ -30,7 +30,7 @@ data_dim = {}
 
 AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD"]
 
-zeta = 23.0
+
 
 #AR_varnames = ["IVT", "sst", "mslhf", "msshf"]
 
@@ -38,7 +38,7 @@ with netCDF4.Dataset(args.input, "r") as ds:
  
     for varname in ["time", "time_clim",]:
         t = ds.variables[varname][:]
-        data_dim[varname] = [ datetime.fromtimestamp(_t) for _t in t]
+        data_dim[varname] = [ datetime.fromtimestamp(int(np.floor(_t))) for _t in t]
 
     for k, subdata in data.items():
 
@@ -46,13 +46,18 @@ with netCDF4.Dataset(args.input, "r") as ds:
             subdata[AR_varname] = ds.variables["%s_%s" % (AR_varname, k)][:]
 
         print(subdata.keys())    
+        #                                 shortwave            longwave          sensible            latent
         subdata['net_sfc_hf']  = subdata['msnswrf'] + subdata['msnlwrf'] + subdata['msshf'] + subdata['mslhf']
         subdata['net_conv_wv'] = subdata['mtpr'] + subdata['mer'] + subdata['mvimd']
    
-        wb_prime = - ( subdata['msnlwrf'] + subdata['msshf'] + subdata['mslhf'] )
-        subdata['Delta'] = NK_tools.calDelta(subdata["MLD"], subdata["U"], wb_prime, zeta, subdata['msnswrf']) 
+        NK_sfhf = - ( subdata['msnlwrf'] + subdata['msshf'] + subdata['mslhf'] ) # positive upwards
+        NK_pme  = subdata['mtpr'] + subdata['mer']  # positive means raining
+     
+        if k == "ttl": 
+            subdata['Delta'] = NK_tools.calDelta(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf']) 
+            subdata['DeltaOnlyU'] = NK_tools.calDeltaOnlyU(subdata["MLD"], subdata["U"])
 
-
+    
 
 def findfirst(a):
     return np.where(a)[0][0]
@@ -94,6 +99,11 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evt['dt']   = (time[ind_last] - time[ind_first]).total_seconds()
     AR_evt['dTdt'] = AR_evt['dT'] / AR_evt['dt']
     
+    mid_time = time[ind_first] + (time[ind_last] - time[ind_first]) / 2
+    AR_evt['mid_time'] = mid_time.timestamp()
+    AR_evt['month'] = mid_time.month
+    AR_evt['year'] = mid_time.year + 1 if within(mid_time.month, 10, 12) else mid_time.year
+    
     AR_evt['U']   = np.mean(data['ttl']['U'][ind])
     AR_evt['MLD']   = np.mean(data['ttl']['MLD'][ind])
     
@@ -111,7 +121,8 @@ for k, t_seg in enumerate(AR_t_segs):
     
     AR_evt['U*ao_Tdiff']  = np.mean( (data['ttl']['t2m'][ind] - data['ttl']['sst'][ind]) * data['ttl']['U'][ind])
     
-    AR_evt['Delta']   = np.mean(data['ttl']['Delta'][ind])
+    AR_evt['Delta']      = np.mean(data['ttl']['Delta'][ind])
+    AR_evt['DeltaOnlyU'] = np.mean(data['ttl']['DeltaOnlyU'][ind])
     
     AR_evt['mean_IVT'] = np.mean(data['ttl']['IVT'][ind])
     AR_evt['max_IVT']  = np.amax(data['ttl']['IVT'][ind])
@@ -207,9 +218,15 @@ var_infos = {
     },
 
     'Delta' : {
-        'var'  : "$ h\\Delta b w_e$",
-        'unit' : "$ \\mathrm{m}^3 / \\mathrm{s}^3 $",
+        'var'  : "$ \\Delta b w_e$",
+        'unit' : "$ \\mathrm{m}^2 / \\mathrm{s}^3 $",
     },
+
+    'DeltaOnlyU' : {
+        'var'  : "$ \\Delta b w_e$ -- U only",
+        'unit' : "$ \\mathrm{m}^2 / \\mathrm{s}^3 $",
+    },
+
 
     'dt' : {
         'var'  : "$\\Delta t_{\\mathrm{AR}}$",
@@ -256,7 +273,7 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 plot_data = [
     ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',     'dTdt_no_sfchf'), 
-    ('dTdt', 'dTdt_no_sfchf'), None,                            ('Delta', 'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('Delta', 'dTdt_no_sfchf'), 
 ]
 
 
@@ -287,8 +304,10 @@ for i, _plot_data in enumerate(plot_data):
     var_info_y = var_infos[_plot_data[1]]
 
     _ax = ax_flat[i]
-    _data = collectData(AR_evts, dict(X=_plot_data[0], Y=_plot_data[1], Z='dt', picked='do_linregress'))
-    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']/86400, s=10, cmap='bone_r', vmin=0, vmax=5)
+    _data = collectData(AR_evts, dict(X=_plot_data[0], Y=_plot_data[1], Z='dt', month='month', year='year', mid_time='mid_time', picked='do_linregress'))
+    #mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']/86400, s=10, cmap='bone_r', vmin=0, vmax=5)
+    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['year'], s=10, cmap='bone_r')
+    #_ax.plot(_data['X'], _data['Y'], "r-")
     plot_linregress(_ax, _data['X'][_data['picked']==True], _data['Y'][_data['picked']==True])
 
 
