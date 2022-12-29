@@ -4,7 +4,7 @@ import netCDF4
 from datetime import (datetime, timedelta, timezone)
 import traceback
 import anomalies
-import date_tools, fmon_tools
+import date_tools
 from pathlib import Path
 import argparse
 
@@ -19,7 +19,7 @@ parser.add_argument('--output-dir', type=str, help='Output directory', default="
 parser.add_argument('--products', type=str, nargs="+", help='Forcast products.', default=["GFS",])
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
+parser.add_argument('--mld', type=str, help='The mixed layer specifier. Can be `50` or `95`', choices=['50', '95'], required=True)
 parser.add_argument('--save', action="store_true", help='Save the timeseries into an npz file')
 
 
@@ -46,7 +46,7 @@ if total_days <= 0:
 
 AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10"]
 
-aug_AR_varnames = AR_varnames + ['U', 'MLD', 'hdb', 'dT', 'db']
+aug_AR_varnames = AR_varnames + ['U', 'MLD']
 
 data_good = np.ones((total_days, len(aug_AR_varnames)))
 
@@ -55,7 +55,6 @@ ts = {}
 for AR_var in aug_AR_varnames:
     ts[AR_var] = np.zeros((total_days,)) 
 
-# npdatetime is more like an array of numbers
 
 t_vec = [ beg_date + timedelta(days=d) for d in range(total_days) ]
 t_vec_npdatetime = np.array(t_vec, dtype="datetime64[s]")
@@ -69,91 +68,56 @@ lat_idx = None
 lon_idx = None
 wgt = None
 
-# Load MLD data
-beg_fmon = fmon_tools.datetime2fmon(beg_date) - 1
-end_fmon = fmon_tools.datetime2fmon(end_date) + 1
-total_fmon = end_fmon - beg_fmon + 1
+# Find mixed-layer depth
 
-fmon_data = {}
-fmon_varnames = ["MLD", "db", "T_upper", "T_lower"]  # loaded from file
-aug_fmon_varnames = fmon_varnames + ["hdb", "dT"]         # generate from above
-for varname in aug_fmon_varnames:
-    fmon_data[varname] = np.zeros((total_fmon,)) 
+MLD_info = {
+
+    '95' : {
+        'filename' : "data_MLD/mixed_layer_properties_95.nc",
+        'varname'  : 'depth_95',
+    },
+ 
+    '50' : {
+        'filename' : "data_MLD/mixed_layer_properties_50_update.nc",
+        'varname'  : 'depth_50',
+    } 
+
+}[args.mld]
 
 
+print("Load file: ", MLD_info['filename'])
+with netCDF4.Dataset(MLD_info['filename'], "r") as ds:
+                
+    MLD_lat = ds.variables["latitude"][:]
+    MLD_lon = ds.variables["longitude"][:] % 360.0
 
-for k, _fmon in enumerate(range(beg_fmon, end_fmon+1)):
-        
-    y, m = fmon_tools.getYearMonthFromfmon(_fmon)
+    lat_rng = np.array(args.lat_rng)
+    lon_rng = np.array(args.lon_rng) % 360
+
+    if lat_rng[1] < lat_rng[0]:  # across lon=0
+        raise Exception("Latitude range should be lat_min, lat_max")
+
+    lat_idx = (lat_rng[0] < MLD_lat) & (MLD_lat < lat_rng[1])
+
+    if lon_rng[1] >= lon_rng[0]:
+        lon_idx = (lon_rng[0] < MLD_lon) & (MLD_lon < lon_rng[1])
     
-    _t = datetime(y, m, 1)
-    
-    _data = {}
-            
-    for i, varname in enumerate(fmon_varnames):
+    else:  # across lon=0
+        print("Across lon=0")
+        lon_idx = (lon_rng[0] < MLD_lon) | (MLD_lon < lon_rng[1])
 
-        try:
+    MLD_lat = MLD_lat[lat_idx]
+    MLD_lon = MLD_lon[lon_idx]
+    wgt = np.cos(MLD_lat * np.pi / 180)
+    data_MLD = ds.variables[MLD_info['varname']][:, lat_idx, lon_idx]
+    data_MLD = np.average(np.average(data_MLD, axis=2), axis=1, weights=wgt)
 
-            load_varname = varname
+# Interpolate MLD data
+data_MLD_time = ( np.arange(12) + 0.5 ) / 12.0
+wrapped_t_vec = [ anomalies.doy_leap(t) / 366 for t in t_vec ]
+ts['MLD'] = np.interp(wrapped_t_vec, data_MLD_time, data_MLD, period=1.0) 
 
-            info = load_data.getFileAndIndex("ORA5", _t, root_dir="data", varname=varname, mxl_algo=args.mld)
-
-            print("Load file: ", info['filename'])
-            
-            with netCDF4.Dataset(info['filename'], "r") as ds:
-
-                # decide range
-                if lat is None:
-                    
-                    lat = ds.variables[info['varnames']['lat']][:]
-                    lon = ds.variables[info['varnames']['lon']][:] % 360.0
-
-                    lat_rng = np.array(args.lat_rng)
-                    lon_rng = np.array(args.lon_rng) % 360
-                    
-                    if lat_rng[1] < lat_rng[0]:  # across lon=0
-                        raise Exception("Latitude range should be lat_min, lat_max")
-
-                    lat_idx = (lat_rng[0] < lat) & (lat < lat_rng[1])
-
-                    if lon_rng[1] >= lon_rng[0]:
-                        lon_idx = (lon_rng[0] < lon) & (lon < lon_rng[1])
-                    
-                    else:  # across lon=0
-                        print("Across lon=0")
-                        lon_idx = (lon_rng[0]) < lon | (lon < lon_rng[1])
-
-                    lat = lat[lat_idx]
-                    lon = lon[lon_idx]
-                    wgt = np.cos(lat * np.pi / 180)
-
-
-                _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
-
-        except Exception as e:
-
-            print(traceback.format_exc()) 
-            print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
-
-            raise e
-
-
-    _data['dT'] = _data['T_upper'] - _data['T_lower']
-    _data['hdb'] = _data['MLD'] * _data['db']
-    for varname in aug_fmon_varnames:
-        fmon_data[varname][k] = np.average(np.average( _data[varname], axis=1), weights=wgt)
-
-# Interpolate ORA5 data
-ts_fmon = np.zeros((total_fmon,), dtype='datetime64[s]')
-for i, _fmon in enumerate(range(beg_fmon, end_fmon+1)):
-    y, m = fmon_tools.getYearMonthFromfmon(_fmon)
-    ts_fmon[i] = np.datetime64(datetime(y, m, 15, 12, 0, 0))
-
-for varname in aug_fmon_varnames:
-    ts[varname] = np.interp(t_vec_npdatetime.astype(np.float64), ts_fmon.astype(np.float64), fmon_data[varname]) 
-
-
-# Load ERA5 data
+# Load data
 for d in range(total_days):
         
     _t = beg_date + timedelta(days=d)
@@ -226,9 +190,10 @@ for d in range(total_days):
     if keep_going:
         _data['U'] = np.sqrt(_data['u10']**2 + _data['v10']**2)
         for varname in aug_AR_varnames:
-            if varname in aug_fmon_varnames:
-                print("Already have %s. Skip" % (varname,))
+            if varname == "MLD":
+                print("Already have MLD. Skip")
                 continue
+
 
             ts[varname][d] = np.average(np.average( _data[varname], axis=1), weights=wgt)
 

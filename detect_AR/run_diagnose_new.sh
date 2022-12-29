@@ -24,7 +24,7 @@ AR_dt_rngs=(
 # Testing
 
 beg_year=2001
-end_year=2001
+end_year=2010
 
 spatial_rngs=(
     30 50 -160 -130
@@ -43,7 +43,7 @@ python3 count_days_map.py \
     --output $output_dir/AR_days.nc    &
 fi
 
-for mld in 95 ; do
+for mld in somxl010 somxl030  ; do
 
     for i in $( seq 1 $(( "${#spatial_rngs[@]}" / 4 )) ); do
 

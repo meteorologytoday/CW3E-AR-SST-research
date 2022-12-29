@@ -93,13 +93,16 @@ def processORA5ForNillerKrausMixedLayerDynamics(
                 db[t, j, i] = TS2b(T_sampled[0], S_sampled[0]) - TS2b(T_sampled[1], S_sampled[1])
 
 
-
+    dT = T_upper - T_lower
+    dS = S_upper - S_lower
 
     output_vars = {
         'T_upper' : T_upper,
         'T_lower' : T_lower,
         'S_upper' : S_upper,
         'S_lower' : S_lower,
+        'dT'      : dT,
+        'dS'      : dS,
         'db'      : db,
         'MLD'     : MLD,
     }

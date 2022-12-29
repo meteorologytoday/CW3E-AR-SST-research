@@ -5,16 +5,16 @@ import scipy.interpolate
 from scipy.interpolate import RectBivariateSpline
 
 
-def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
+def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
     
     if product == "ERA5":
 
         if varname in ["sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10",] :
             subfolder = "sfc"
-            filename = "ERA5_sfc_%s.nc" % (date.strftime("%Y-%m-%d"))
+            filename = "ERA5_sfc_%s.nc" % (date.strftime("%Y-%m-%d"),)
         elif varname in ["IWV", "IVT", "IWVKE"]:
             subfolder = "AR_processed"
-            filename = "ERA5_AR_%s.nc" % (date.strftime("%Y-%m-%d"))
+            filename = "ERA5_AR_%s.nc" % (date.strftime("%Y-%m-%d"),)
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )
 
@@ -27,8 +27,7 @@ def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
  
     elif product == "GFS":
 
-        if fcst == -1:
-            raise Exception("Need parameter `fcst` -- forecast hour.")
+        fcst = kwargs['fcst']
 
         timestr = date.strftime("%Y%m%d")
         if varname in ["IWV", "IVT", "IWVKE"]:
@@ -51,6 +50,32 @@ def getFileAndIndex(product, date, root_dir="data", fcst=-1, varname=""):
         idx = 0
         lat = "lat"
         lon = "lon"
+
+    elif product == "ORA5":
+
+        timestr = date.strftime("%Y-%m")
+
+        if varname in ["MLD", "T_upper", "T_lower", "S_upper", "S_lower", "db"]:
+
+            mxl_algo = kwargs['mxl_algo']
+
+            if mxl_algo in ['somxl010', 'somxl030']:
+
+                filename = "ORA5_NillerKrausMixedLayerDynamics_%s_%s.nc" % (mxl_algo, timestr)
+                subfolder = "processed_remapped" 
+
+            else:
+                raise Exception("Unknown mixed-layer algorithm %s" % (mxl_algo,))
+
+        else:
+            raise Exception("Unrecognized varname: %s " % (varname,) )
+
+
+        filename = os.path.join(root_dir, "ORA5", subfolder, filename)
+        idx = 0
+        lat = "lat"
+        lon = "lon"
+
 
     else:
         raise Exception("Unrecognized product: %s" % (product,))
