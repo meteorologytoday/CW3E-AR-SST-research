@@ -114,7 +114,7 @@ print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
 
-with Pool(processes=1) as pool:
+with Pool(processes=2) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 
