@@ -6,7 +6,7 @@ rho0 = 1026.0
 cp = 3996.0
 alpha = 2e-4
 beta  = 8e-4
-g0 = 9.81
+g0 = 9.80616     # m / s**2      copied from models/csm_share/shr/shr_const_mod.F90
 zeta = 23.0
 
 
@@ -34,7 +34,9 @@ def cal_hdbwe(h, U10, sfhf, pme, F_sol):
     u_star = calu_star(U10)
     B = calB(h, wb_prime, zeta, F_sol)
 
-    return 2 * NK_m * u_star**3 - 0.5 * h * ( (1 - NK_n) * abs(B) + (1 + NK_n) * B )
+
+
+    return 2 * NK_m * u_star**3 #- 0.5 * h * ( (1 - NK_n) * abs(B) + (1 + NK_n) * B )
 
 
 def cal_we(h, U10, sfhf, pme, F_sol, db):
@@ -46,11 +48,15 @@ def cal_we(h, U10, sfhf, pme, F_sol, db):
     return cal_hdbwe(h, U10, sfhf, pme, F_sol) / ( h * db )
 
 
-def cal_dSST_deepen(h, U10, sfhf, pme, F_sol, db, dT):
+def cal_dSSTdt_e(h, U10, sfhf, pme, F_sol, db, dT):
     
     # shfh : surface heat fluxes = longwave + sensible + latent (positive upwards)
     # pme  : Precipitation minus evaporation rate (kg / s)
     # F_sol : Shortwave radiation (positive downward)
+    
+    dbhwe = cal_hdbwe(h, U10, sfhf, pme, F_sol)
+    
+    print("dbhwe: %.5f, db: %.5f, h: %.1f, dT: %.1f, dbhwe/db/h**2 = %.5f" % (np.mean(dbhwe), np.mean(db), np.mean(h), np.mean(dT), np.mean(dbhwe/db/h**2)))
 
     return cal_we(h, U10, sfhf, pme, F_sol, db) * dT / h 
 
@@ -61,10 +67,8 @@ def calu_star(U10):
     # Wu, J. (1982). Wind‐stress coefficients over sea surface from breeze to 
     # hurricane. Journal of Geophysical Research: Oceans, 87(C12), 9704-9706.
     u_star = U10 * np.sqrt( (0.8 + 0.065 * U10) * 1e-3 ) 
-    print("U10: ", U10, "; u_star: ", u_star)
     return u_star
    
-
 def calB(h, wb_prime, zeta, F_sol):
 
     B = - wb_prime + alpha * g0 / (rho0 * cp) * F_sol * (1 + calI(- h, zeta) - 2 / h * calIntI(- h, zeta))

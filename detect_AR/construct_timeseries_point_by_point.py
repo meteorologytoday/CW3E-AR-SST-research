@@ -4,9 +4,11 @@ import netCDF4
 from datetime import (datetime, timedelta, timezone)
 import traceback
 import anomalies
-import date_tools, fmon_tools
+import date_tools, fmon_tools, domain_tools, NK_tools
+import earth_constants as ec
 from pathlib import Path
 import argparse
+import buoyancy_linear
 
 parser = argparse.ArgumentParser(
                     prog = 'plot_skill',
@@ -16,12 +18,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--beg-year', type=int, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--end-year', type=int, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--output-dir', type=str, help='Output directory', default="")
-parser.add_argument('--products', type=str, nargs="+", help='Forcast products.', default=["GFS",])
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
-parser.add_argument('--save', action="store_true", help='Save the timeseries into an npz file')
-
 
 args = parser.parse_args()
 
@@ -33,6 +32,9 @@ beg_date = datetime(args.beg_year-1, 10,  1 )
 end_date = datetime(args.end_year,    4,  1 )
 
 total_days = (end_date - beg_date).days
+t_vec = [ beg_date + timedelta(days=d) for d in range(total_days) ]
+t_vec_npdatetime = np.array(t_vec, dtype="datetime64[s]")
+
 
 
 print("Beg: ", beg_date)
@@ -44,203 +46,226 @@ if total_days <= 0:
 
 
 
-AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10"]
-
-aug_AR_varnames = AR_varnames + ['U', 'MLD', 'hdb', 'dT', 'db']
-
-data_good = np.ones((total_days, len(aug_AR_varnames)))
-
-ts = {}
-
-for AR_var in aug_AR_varnames:
-    ts[AR_var] = np.zeros((total_days,)) 
-
-# npdatetime is more like an array of numbers
-
-t_vec = [ beg_date + timedelta(days=d) for d in range(total_days) ]
-t_vec_npdatetime = np.array(t_vec, dtype="datetime64[s]")
+ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", "EkmanAdv"]
+ORA5_varnames = ["MLD", "db", "T_upper", "T_lower", "dT_Ek"]
+            
+ignored_months = [4, 5, 6, 7, 8, 9]
 
 
-# Prep
+domain_check_tolerance = 1e-10
+ERA5_lat_raw = None
+ERA5_lon_raw = None
+ORA5_lat_raw = None
+ORA5_lon_raw = None
+lat_idx = None
+lon_idx = None
 
 lat = None
 lon = None
-lat_idx = None
-lon_idx = None
 wgt = None
+f_co = None
 
-# Load MLD data
-beg_fmon = fmon_tools.datetime2fmon(beg_date) - 1
-end_fmon = fmon_tools.datetime2fmon(end_date) + 1
-total_fmon = end_fmon - beg_fmon + 1
+computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'dT_contribution_to_db', 'dTdt_Ekman', 'w_Ekman']
 
-fmon_data = {}
-fmon_varnames = ["MLD", "db", "T_upper", "T_lower"]  # loaded from file
-aug_fmon_varnames = fmon_varnames + ["hdb", "dT"]         # generate from above
-for varname in aug_fmon_varnames:
-    fmon_data[varname] = np.zeros((total_fmon,)) 
+ts = { varname : np.zeros((total_days,), dtype=np.float32) 
+    for varname in (ERA5_varnames + ORA5_varnames + computed_vars) 
+}
+
+data_good = np.zeros((total_days,), dtype=bool)
 
 
+def magicalExtension(_data):
 
-for k, _fmon in enumerate(range(beg_fmon, end_fmon+1)):
-        
-    y, m = fmon_tools.getYearMonthFromfmon(_fmon)
-    
-    _t = datetime(y, m, 1)
-    
-    _data = {}
-            
-    for i, varname in enumerate(fmon_varnames):
+    #_data["MLD"] *= 2
 
-        try:
-
-            load_varname = varname
-
-            info = load_data.getFileAndIndex("ORA5", _t, root_dir="data", varname=varname, mxl_algo=args.mld)
-
-            print("Load file: ", info['filename'])
-            
-            with netCDF4.Dataset(info['filename'], "r") as ds:
-
-                # decide range
-                if lat is None:
-                    
-                    lat = ds.variables[info['varnames']['lat']][:]
-                    lon = ds.variables[info['varnames']['lon']][:] % 360.0
-
-                    lat_rng = np.array(args.lat_rng)
-                    lon_rng = np.array(args.lon_rng) % 360
-                    
-                    if lat_rng[1] < lat_rng[0]:  # across lon=0
-                        raise Exception("Latitude range should be lat_min, lat_max")
-
-                    lat_idx = (lat_rng[0] < lat) & (lat < lat_rng[1])
-
-                    if lon_rng[1] >= lon_rng[0]:
-                        lon_idx = (lon_rng[0] < lon) & (lon < lon_rng[1])
-                    
-                    else:  # across lon=0
-                        print("Across lon=0")
-                        lon_idx = (lon_rng[0]) < lon | (lon < lon_rng[1])
-
-                    lat = lat[lat_idx]
-                    lon = lon[lon_idx]
-                    wgt = np.cos(lat * np.pi / 180)
-
-
-                _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
-
-        except Exception as e:
-
-            print(traceback.format_exc()) 
-            print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
-
-            raise e
-
-
-    _data['dT'] = _data['T_upper'] - _data['T_lower']
+    _data['U']   = np.sqrt(_data['u10']**2 + _data['v10']**2)
+    _data['dT']  = _data['T_upper'] - _data['T_lower']
     _data['hdb'] = _data['MLD'] * _data['db']
-    for varname in aug_fmon_varnames:
-        fmon_data[varname][k] = np.average(np.average( _data[varname], axis=1), weights=wgt)
 
-# Interpolate ORA5 data
-ts_fmon = np.zeros((total_fmon,), dtype='datetime64[s]')
-for i, _fmon in enumerate(range(beg_fmon, end_fmon+1)):
-    y, m = fmon_tools.getYearMonthFromfmon(_fmon)
-    ts_fmon[i] = np.datetime64(datetime(y, m, 15, 12, 0, 0))
+    #                           shortwave            longwave          sensible            latent
+    _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
+    _data['net_conv_wv'] = _data['mtpr'] + _data['mer'] + _data['mvimd']
 
-for varname in aug_fmon_varnames:
-    ts[varname] = np.interp(t_vec_npdatetime.astype(np.float64), ts_fmon.astype(np.float64), fmon_data[varname]) 
+    _data['sfhf_wosw'] = - ( _data['msnlwrf'] + _data['msshf'] + _data['mslhf'] ) # positive upwards
+    _data['pme']       = _data['mtpr'] + _data['mer']                             # positive means raining
+ 
+    _data['w_deepen'] = NK_tools.cal_we(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db']) 
+    _data['dTdt_deepen'] = NK_tools.cal_dSSTdt_e(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db'], _data['dT'])
+ 
+    #_data['DeltaOnlyU'] = NK_tools.calDeltaOnlyU(_data["MLD"], _data["U"])
+
+    
+    _data['dTdt_sfchf'] = _data['net_sfc_hf'] / (3996*1026 * _data['MLD'])
+    _data['dTdt_no_sfchf'] = _data['dTdt'] - _data['dTdt_sfchf']
 
 
-# Load ERA5 data
-for d in range(total_days):
+    _data['dT_contribution_to_db'] = buoyancy_linear.g0 * buoyancy_linear.alpha_T * _data['dT'] / _data['db']
+
+    _data['w_Ekman']  = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
+    _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT_Ek'] / _data['MLD']
+
+    _data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
+    
+
+for d, _t in enumerate(t_vec):
         
-    _t = beg_date + timedelta(days=d)
-        
-            
     _data = {}
             
-    keep_going = True
+    I_have_all_data_for_today = True
+    
+    if _t.month in ignored_months:
 
-    for i, varname in enumerate(AR_varnames):
+        print("We do not need this time of data.")
+        I_have_all_data_for_today = False
+        
+    else:
 
+        # Load ERA5 data
+        for i, varname in enumerate(ERA5_varnames):
+
+            try:
+
+                load_varname = varname
+
+                # Load observation (the 'truth')
+                info = load_data.getFileAndIndex("ERA5", _t, root_dir="data", varname=varname)
+
+                print("Load `%s` from file: %s" % ( varname, info['filename'] ))
+
+
+                with netCDF4.Dataset(info['filename'], "r") as ds:
+                    
+                    if ERA5_lat_raw is None:
+                       
+                        print("Coordinate loading...") 
+                        ERA5_lat_raw = ds.variables[info['varnames']['lat']][:]
+                        ERA5_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
+
+                        lat_rng = np.array(args.lat_rng)
+                        lon_rng = np.array(args.lon_rng) % 360
+                        
+                        lat_idx, lon_idx, wgt = domain_tools.detectIndexRange(ERA5_lat_raw, ERA5_lon_raw, lat_rng, lon_rng)
+
+                        lat = ERA5_lat_raw[lat_idx]
+                        lon = ERA5_lon_raw[lon_idx]
+                        wgt = np.cos(lat * np.pi / 180)
+
+                        f_co = 2 * ec.Omega * np.sin(np.pi / 180 * lat)
+
+
+                    _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
+
+            except Exception as e:
+
+                print(traceback.format_exc()) 
+                print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+
+                I_have_all_data_for_today = False
+
+
+        # Special: compute dSST/dt as variable "dTdt"
         try:
 
-            if _t.month in [4, 5, 6, 7, 8, 9]:
-                raise Exception("We do not this time of data.")
-
+            varname = "sst"
             load_varname = varname
 
             # Load observation (the 'truth')
-            info = load_data.getFileAndIndex("ERA5", _t, root_dir="data", varname=varname)
+            info_l = load_data.getFileAndIndex("ERA5", _t + timedelta(days=-1), root_dir="data", varname=varname)
+            info_r = load_data.getFileAndIndex("ERA5", _t + timedelta(days=1), root_dir="data", varname=varname)
 
-            print("Load file: ", info['filename'])
+            print("Load `%s` from file: %s" % (load_varname, info_l['filename']))
+            with netCDF4.Dataset(info_l['filename'], "r") as ds:
+                _data_l = ds.variables[load_varname][info_l['idx'], lat_idx, lon_idx]
 
+            print("Load `%s` from file: %s" % (load_varname, info_r['filename']))
+            with netCDF4.Dataset(info_r['filename'], "r") as ds:
+                _data_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
 
-            with netCDF4.Dataset(info['filename'], "r") as ds:
-                # decide range
-                if lat is None:
-                    
-                    lat = ds.variables[info['varnames']['lat']][:]
-                    lon = ds.variables[info['varnames']['lon']][:] % 360.0
-
-
-                    lat_rng = np.array(args.lat_rng)
-                    lon_rng = np.array(args.lon_rng) % 360
-                    
-                    if lat_rng[1] < lat_rng[0]:  # across lon=0
-                        raise Exception("Latitude range should be lat_min, lat_max")
-
-                    lat_idx = (lat_rng[0] < lat) & (lat < lat_rng[1])
-
-                    if lon_rng[1] >= lon_rng[0]:
-                        lon_idx = (lon_rng[0] < lon) & (lon < lon_rng[1])
-                    
-                    else:  # across lon=0
-                        print("Across lon=0")
-                        lon_idx = (lon_rng[0]) < lon | (lon < lon_rng[1])
-
-                    lat = lat[lat_idx]
-                    lon = lon[lon_idx]
-                    wgt = np.cos(lat * np.pi / 180)
-
-
-                _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
-                #ts[varname][d] = np.average(np.average( _data[load_varname], axis=1), weights=wgt)
-
-
+            _data['dTdt'] = (_data_r - _data_l) / (2 * 86400.0)
 
         except Exception as e:
 
             print(traceback.format_exc()) 
             print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
-            data_good[d, i] = 0.0
+            I_have_all_data_for_today = False
 
-            keep_going = False
+        #del info
+
+        ############ Loading ORA5 data ############ 
+        # Determine boundaries
+        if _t.day < 15:
+            _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)-1)
+            _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
+        else:
+            _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
+            _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)+1)
+        
+        _t_l = _t_l.replace(day=15)
+        _t_r = _t_r.replace(day=15)
+
+        Delta_t_all = _t_r - _t_l
+        Delta_t     = _t - _t_l
 
 
+        for i, varname in enumerate(ORA5_varnames):
+
+            try:
+
+                load_varname = varname
+                
+                info_l = load_data.getFileAndIndex("ORA5", _t_l, root_dir="data", varname=varname, mxl_algo=args.mld)
+                info_r = load_data.getFileAndIndex("ORA5", _t_r, root_dir="data", varname=varname, mxl_algo=args.mld)
+                tmp_l = None
+                tmp_r = None
+
+                print("Load file [left]: ", info_l['filename'])
+                with netCDF4.Dataset(info_l['filename'], "r") as ds:
+                    tmp_l = ds.variables[load_varname][info_l['idx'], lat_idx, lon_idx]
+
+                    if ORA5_lat_raw is None:
+                        
+                        ORA5_lat_raw = ds.variables[info_l['varnames']['lat']][:]
+                        ORA5_lon_raw = ds.variables[info_l['varnames']['lon']][:] % 360.0
+
+                        # Compare coordinate
+                        if np.any(np.abs(ORA5_lat_raw - ERA5_lat_raw) > domain_check_tolerance) or np.any(np.abs(ORA5_lon_raw - ERA5_lon_raw) > domain_check_tolerance):
+                            raise Error("Fatal error: ERA5 and ORA5 has different domain")
 
 
-    if keep_going:
-        _data['U'] = np.sqrt(_data['u10']**2 + _data['v10']**2)
-        for varname in aug_AR_varnames:
-            if varname in aug_fmon_varnames:
-                print("Already have %s. Skip" % (varname,))
-                continue
+                print("Load file [right]: ", info_r['filename'])
+                with netCDF4.Dataset(info_r['filename'], "r") as ds:
+                    tmp_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
+                    
 
-            ts[varname][d] = np.average(np.average( _data[varname], axis=1), weights=wgt)
+                _data[varname] = tmp_l + (tmp_r - tmp_l) * (Delta_t / Delta_t_all)
+
+            except Exception as e:
+
+                print(traceback.format_exc()) 
+                print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+
+                raise e
 
 
+        data_good[d] = I_have_all_data_for_today
+
+    if not I_have_all_data_for_today:
+
+        print("Missing data for date: ", _t)
+        continue
+
+    # Add other vairables inside
+    magicalExtension(_data)
 
 
-   
+    for varname, var_data in _data.items():
+        ts[varname][d] = np.average(np.average( _data[varname], axis=1), weights=wgt)
+
 
 print("Exclude non-consecutive years")
-data_all_good = np.prod(data_good, axis=1) != 0
-all_good_t = t_vec_npdatetime[data_all_good]
-missing_dates = date_tools.findMissingDatetime(all_good_t, beg_date, end_date, timedelta(days=1))
+data_good_t = t_vec_npdatetime[data_good == True]
+missing_dates = date_tools.findMissingDatetime(data_good_t, beg_date, end_date, timedelta(days=1))
 
 
 # I let the months [ (y-1).11, (y-1).12, y.1, y.2, y.3, y.4 ] be the winter of the year `y`. 
@@ -248,13 +273,13 @@ rm_years = []
 needed_missing_dates = np.zeros((len(missing_dates),), dtype=bool)
 for i, missing_date in enumerate(missing_dates):
 
-    if missing_date.month in [10, 11, 12]:
+    if missing_date.month in [11, 12]:#[10, 11, 12]:
         
         rm_years.append(missing_date.year+1)
         needed_missing_dates[i] = True
 
 
-    elif missing_date.month in [1, 2, 3]:
+    elif missing_date.month in [1, 2]:#, 3]:
         
         rm_years.append(missing_date.year)
         needed_missing_dates[i] = True
@@ -280,17 +305,14 @@ marked_to_remove = np.ones((len(t_vec),), dtype=bool)
 for i, t in enumerate(t_vec):
     marked_to_remove[i] = t.year in rm_years
     
-data_good[marked_to_remove == True, :] = 0.0
-    
-print("Filtering data")
-for i, AR_var in enumerate(aug_AR_varnames):
-    print("Doing: ", AR_var)
-    data_good_idx = data_good[:, i] == 0.0
-    ts[AR_var][data_good_idx] = np.nan
+data_good[marked_to_remove == True] = False
  
 
 
-
+print("Clear the data of the date if we do not have all the data of that date, or if any date in that winter is missing.")
+data_not_good_idx = (data_good == False)
+for varname, var_data in ts.items():
+    var_data[data_not_good_idx] = np.nan
 
 # produce decomposed data
 data_decompose = {
@@ -298,8 +320,8 @@ data_decompose = {
     'anom' : {},
 }
 
-for AR_varname in aug_AR_varnames:
-    time_clim, data_decompose['clim'][AR_varname], data_decompose['anom'][AR_varname], cnt = anomalies.decomposeClimAnom(t_vec, ts[AR_varname])
+for varname in ts.keys():
+    time_clim, data_decompose['clim'][varname], data_decompose['anom'][varname], cnt = anomalies.decomposeClimAnom(t_vec, ts[varname])
 
 
 if args.output_dir != "":
@@ -310,7 +332,9 @@ if args.output_dir != "":
 
         dim_time_clim = ds.createDimension('time', len(t_vec))
         var_time = ds.createVariable('time', 'f4', ('time',))
-        var_time[:] = t_vec_npdatetime
+        var_time.units    = 'days since 1970-01-01 00:00:00'
+        var_time.calendar = 'standard'
+        var_time[:] = (t_vec_npdatetime - np.datetime64('1970-01-01')) / np.timedelta64(1, 'D')
         
         dim_time_clim = ds.createDimension('time_clim', len(time_clim))
         var_time_clim = ds.createVariable('time_clim', 'f4', ('time_clim',))
@@ -318,16 +342,16 @@ if args.output_dir != "":
         var_time_clim.calendar = 'noleap'
         var_time_clim[:] = time_clim
         
-        for AR_varname in aug_AR_varnames:
+        for varname in ts.keys():
 
-            _var_ttl     = ds.createVariable("%s_ttl" % (AR_varname, ), 'f4', ('time',))
-            _var_ttl[:]  = ts[AR_varname]
+            _var_ttl     = ds.createVariable("%s_ttl" % (varname, ), 'f4', ('time',))
+            _var_ttl[:]  = ts[varname]
  
-            _var_clim = ds.createVariable("%s_clim" % (AR_varname, ), 'f4', ('time_clim',))
-            _var_clim[:] = data_decompose['clim'][AR_varname]
+            _var_clim = ds.createVariable("%s_clim" % (varname, ), 'f4', ('time_clim',))
+            _var_clim[:] = data_decompose['clim'][varname]
  
-            _var_anom = ds.createVariable("%s_anom" % (AR_varname, ), 'f4', ('time',))
-            _var_anom[:] = data_decompose['anom'][AR_varname]
+            _var_anom = ds.createVariable("%s_anom" % (varname, ), 'f4', ('time',))
+            _var_anom[:] = data_decompose['anom'][varname]
             
 
     with netCDF4.Dataset("%s/AR_timeseries.nc" % (args.output_dir,), 'w', format='NETCDF4') as ds:
@@ -336,7 +360,7 @@ if args.output_dir != "":
         var_time = ds.createVariable('time', 'f4', ('time',))
         var_time[:] = t_vec_npdatetime
         
-        for varname in aug_AR_varnames:
+        for varname in ts.keys():
 
             _var = ds.createVariable(varname, 'f4', ('time',))
             #value.units = 'Unknown'

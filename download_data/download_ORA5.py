@@ -152,18 +152,13 @@ class JOB:
                 
                 T_filename   = "%s/ORA5_%s_%s.nc" % (download_dir, "votemper", time_now_str)
                 S_filename   = "%s/ORA5_%s_%s.nc" % (download_dir, "vosaline", time_now_str)
-                sample_above_dist = 10.0 
-                sample_below_dist = 20.0 
                 output_filename = processed_filename
-                print(MLD_filename)
                 postprocess_ORA5.processORA5ForNillerKrausMixedLayerDynamics(
                     MLD_filename,
                     T_filename,
                     S_filename,
                     output_filename,
                     varname_MLD = varname_MLD,
-                    sample_above_dist = sample_above_dist, 
-                    sample_below_dist = sample_below_dist,
                 )
                 
         

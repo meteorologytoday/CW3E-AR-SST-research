@@ -28,7 +28,7 @@ data = {
 
 data_dim = {}
 
-AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "hdb", "dT", "db"]
+AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "dT", "db", "dTdt", "dTdt_sfchf", "dTdt_no_sfchf", "w_deepen", "dTdt_deepen", "net_sfc_hf", "net_conv_wv", "vort10", "curltau", "dTdt_Ekman"]
 
 
 
@@ -38,28 +38,13 @@ with netCDF4.Dataset(args.input, "r") as ds:
  
     for varname in ["time", "time_clim",]:
         t = ds.variables[varname][:]
-        data_dim[varname] = [ datetime.fromtimestamp(int(np.floor(_t))) for _t in t]
+        data_dim[varname] = [ datetime(1970, 1, 1) + _t * timedelta(days=1) for _t in t]
 
     for k, subdata in data.items():
 
         for AR_varname in AR_varnames:
             subdata[AR_varname] = ds.variables["%s_%s" % (AR_varname, k)][:]
 
-        print(subdata.keys())    
-        #                                 shortwave            longwave          sensible            latent
-        subdata['net_sfc_hf']  = subdata['msnswrf'] + subdata['msnlwrf'] + subdata['msshf'] + subdata['mslhf']
-        subdata['net_conv_wv'] = subdata['mtpr'] + subdata['mer'] + subdata['mvimd']
-   
-        NK_sfhf = - ( subdata['msnlwrf'] + subdata['msshf'] + subdata['mslhf'] ) # positive upwards
-        NK_pme  = subdata['mtpr'] + subdata['mer']  # positive means raining
-     
-        if k == "ttl": 
-            #subdata['dSST_deepen'] = NK_tools.cal_dSST_deepen(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf'], subdata['db'], subdata['dT']) 
-            #subdata['dSST_deepen'] = NK_tools.cal_we(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf'], subdata['db']) 
-            subdata['dSST_deepen'] = NK_tools.cal_hdbwe(subdata["MLD"], subdata["U"], NK_sfhf, NK_pme, subdata['msnswrf']) 
-            subdata['DeltaOnlyU'] = NK_tools.calDeltaOnlyU(subdata["MLD"], subdata["U"])
-
-    
 
 def findfirst(a):
     return np.where(a)[0][0]
@@ -75,7 +60,6 @@ def within(a, m, M):
     #data['time'] = data['time'][:]
 
 data['ttl']['IVT'][np.isnan(data['ttl']['IVT'])] = 0.0
-
 
 AR_t_segs, AR_t_inds = AR_tools.detectAbove(data_dim['time'], data['ttl']['IVT'], 250.0, glue_threshold=timedelta(hours=24))
 
@@ -95,11 +79,10 @@ for k, t_seg in enumerate(AR_t_segs):
 
     #print("(%d, %d) " % (ind_first, ind_last,))
 
-    sst  = data['ttl']['sst']
+    #sst  = data['ttl']['sst']
     time = data_dim['time']
-    AR_evt['dT']   = sst[ind_last] - sst[ind_first] 
     AR_evt['dt']   = (time[ind_last] - time[ind_first]).total_seconds()
-    AR_evt['dTdt'] = AR_evt['dT'] / AR_evt['dt']
+    AR_evt['dTdt'] = np.mean(data['ttl']['dTdt'][ind])
     
     mid_time = time[ind_first] + (time[ind_last] - time[ind_first]) / 2
     AR_evt['mid_time'] = mid_time.timestamp()
@@ -107,27 +90,28 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evt['year'] = mid_time.year + 1 if within(mid_time.month, 10, 12) else mid_time.year
     AR_evt['watertime'] = watertime_tools.getWatertime(datetime.fromtimestamp(AR_evt['mid_time']))
     
+    AR_evt['vort10']   = np.mean(data['ttl']['vort10'][ind])
+    AR_evt['curltau']   = np.mean(data['ttl']['curltau'][ind])
     AR_evt['U']   = np.mean(data['ttl']['U'][ind])
     AR_evt['MLD']   = np.mean(data['ttl']['MLD'][ind])
     
     AR_evt['net_sfc_hf']   = np.mean(data['ttl']['net_sfc_hf'][ind])
     AR_evt['net_conv_wv']   = np.mean(data['ttl']['net_conv_wv'][ind])
 
+    AR_evt['dTdt_sfchf']    = np.mean(data['ttl']['dTdt_sfchf'][ind])
+    AR_evt['dTdt_no_sfchf'] = np.mean(data['ttl']['dTdt_no_sfchf'][ind])
     
-    AR_evt['dTdt_sfchf'] = AR_evt['net_sfc_hf'] / (3996*1026 * AR_evt['MLD'])
-    AR_evt['dTdt_no_sfchf'] = AR_evt['dTdt'] - AR_evt['dTdt_sfchf']
-    AR_evt['dTdt_ratio_from_sfchf']    = AR_evt['dTdt_sfchf'] / AR_evt['dTdt']
-    AR_evt['dTdt_ratio_from_no_sfchf'] = 1.0 - AR_evt['dTdt_ratio_from_sfchf'] 
+    AR_evt['dTdt_Ekman']    = np.mean(data['ttl']['dTdt_Ekman'][ind])
 
     AR_evt['t2m']   = np.mean(data['ttl']['t2m'][ind])
     AR_evt['ao_Tdiff']  = np.mean(data['ttl']['t2m'][ind] - data['ttl']['sst'][ind])
     
     AR_evt['U*ao_Tdiff']  = np.mean( (data['ttl']['t2m'][ind] - data['ttl']['sst'][ind]) * data['ttl']['U'][ind])
     
-    #AR_evt['Delta']      = np.mean(data['ttl']['Delta'][ind])
-    AR_evt['DeltaOnlyU'] = np.mean(data['ttl']['DeltaOnlyU'][ind])
+    #AR_evt['DeltaOnlyU'] = np.mean(data['ttl']['DeltaOnlyU'][ind])
     
-    AR_evt['dSST_deepen'] = np.mean(data['ttl']['dSST_deepen'][ind])
+    AR_evt['dTdt_deepen'] = np.mean(data['ttl']['dTdt_deepen'][ind])
+    AR_evt['w_deepen']    = np.mean(data['ttl']['w_deepen'][ind])
     
     AR_evt['mean_IVT'] = np.mean(data['ttl']['IVT'][ind])
     AR_evt['max_IVT']  = np.amax(data['ttl']['IVT'][ind])
@@ -203,24 +187,46 @@ print("done")
 var_infos = {
 
     'dTdt' : {
-        'var'  : "$\dot{T}_\\mathrm{ttl}$",
+        'var'  : "$\\dot{T}_\\mathrm{ttl}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_sfchf' : {
-        'var'  : "$\dot{T}_\\mathrm{hf}$",
+        'var'  : "$\\dot{T}_\\mathrm{hf}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_no_sfchf' : {
-        'var'  : "$\dot{T}_\\mathrm{res}$",
+        'var'  : "$\\dot{T}_\\mathrm{res}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
-    'dSST_deepen' : {
-        'var'  : "$\dot{T}_\\mathrm{ent}$",
+    'dTdt_deepen' : {
+        'var'  : "$\\dot{T}_\\mathrm{ent}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
+
+    'w_deepen' : {
+        'var'  : "$w_\\mathrm{ent}$",
+        'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
+    },
+
+    'vort10' : {
+        'var'  : "$\\zeta$",
+        'unit' : "$ 1 / \\mathrm{s} $",
+    },
+
+    'curltau' : {
+        'var'  : "$\\Delta \\times \\vec{\\tau}$",
+        'unit' : "$ 1 / \\mathrm{s} $",
+    },
+
+
+    'dTdt_Ekman' : {
+        'var'  : "$\\dot{T}_{\\mathrm{Ek}}$",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
+    },
+
 
 
     'U' : {
@@ -279,8 +285,8 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 
 plot_data = [
-    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',           'dTdt_no_sfchf'), 
-    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('dSST_deepen', 'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_sfchf'),    ('U',          'curltau'),       ('U',           'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_no_sfchf'), ('dTdt_Ekman', 'dTdt_no_sfchf'), ('dTdt_deepen', 'dTdt_no_sfchf'), 
 ]
 
 
@@ -311,9 +317,9 @@ for i, _plot_data in enumerate(plot_data):
     var_info_y = var_infos[_plot_data[1]]
 
     _ax = ax_flat[i]
-    _data = collectData(AR_evts, dict(X=_plot_data[0], Y=_plot_data[1], Z='dt', watertime='watertime', month='month', year='year', mid_time='mid_time', picked='do_linregress'))
-    #mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']/86400, s=10, cmap='bone_r', vmin=0, vmax=5)
-    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['year'], s=10, cmap='bone_r')
+    _data = collectData(AR_evts, dict(X=_plot_data[0], Y=_plot_data[1], Z='dt', month='month', year='year', mid_time='mid_time', picked='do_linregress'))
+    #mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']/86400, s=10, cmap='bone_r', vmin=0, vmax=10)
+    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['watertime'], s=5, cmap='rainbow')
     #_ax.plot(_data['X'], _data['Y'], "r-")
     plot_linregress(_ax, _data['X'][_data['picked']==True], _data['Y'][_data['picked']==True])
 

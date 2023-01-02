@@ -3,7 +3,7 @@
 . pretty_latlon.sh
 
 beg_year=2001
-end_year=2022
+end_year=2014
 
 
 
@@ -23,17 +23,17 @@ AR_dt_rngs=(
 
 # Testing
 
+
 beg_year=2001
-end_year=2010
+end_year=2014
 
 spatial_rngs=(
     30 50 -160 -130
 )
 
 AR_dt_rngs=(
-   0 50
+   5 50
 )
-
 
 
 if [ ] ; then
@@ -43,7 +43,7 @@ python3 count_days_map.py \
     --output $output_dir/AR_days.nc    &
 fi
 
-for mld in somxl010 somxl030  ; do
+for mld in somxl030  ; do
 
     for i in $( seq 1 $(( "${#spatial_rngs[@]}" / 4 )) ); do
 
@@ -79,7 +79,7 @@ for mld in somxl010 somxl030  ; do
         fi
 
         if [ ! -f "$output_AR_file" ] ; then
-            python3 construct_timeseries.py \
+            python3 construct_timeseries_point_by_point.py \
                 --beg-year=$beg_year \
                 --end-year=$end_year \
                 --lat-rng $lat_min $lat_max \
@@ -87,7 +87,8 @@ for mld in somxl010 somxl030  ; do
                 --mld $mld \
                 --output-dir $output_dir
         fi
-        
+       
+        #if [ ]; then 
         #if [ ] ; then
         output_AR_evts_database=$output_dir/AR_evts.csv
         echo "Generating analysis: $output_AR_evts_database"
@@ -103,9 +104,11 @@ for mld in somxl010 somxl030  ; do
             output_AR_analysis_fig=$output_dir/analysis_${AR_dt_min}-${AR_dt_max}.png
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_decomp.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" #--no-display
+            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" #--no-display
 
         done
+
+        #fi
     done
 
 done

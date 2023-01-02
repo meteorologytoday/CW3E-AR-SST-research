@@ -15,6 +15,9 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
         elif varname in ["IWV", "IVT", "IWVKE"]:
             subfolder = "AR_processed"
             filename = "ERA5_AR_%s.nc" % (date.strftime("%Y-%m-%d"),)
+        elif varname in ["vort10", "curltau"]:
+            subfolder = "sfc_processed"
+            filename = "ERA5_sfc_processed_%s.nc" % (date.strftime("%Y-%m-%d"),)
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )
 

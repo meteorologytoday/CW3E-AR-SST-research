@@ -2,12 +2,15 @@ with open("shared_header.py", "rb") as source_file:
     code = compile(source_file.read(), "shared_header.py", "exec")
 exec(code)
 
+import postprocess_ERA5_sfc
 import cdsapi
 
 c = cdsapi.Client()
 
 download_dir = "data/ERA5/sfc"
 file_prefix = "ERA5_sfc"
+
+processed_dir = "data/ERA5/sfc_processed"
 
 total_days = (end_time - beg_time).days
 
@@ -90,6 +93,23 @@ class JOB:
                 print(str(e))
                 
 
+        processed_filename = "%s/%s_processed_%s.nc" % (processed_dir, file_prefix, time_now_str)
+        already_exists = os.path.isfile(processed_filename)
+
+        if already_exists:
+            print("[%s] Data already exists. Skip." % (time_now_str, ))
+        else:
+            print("[%s] Now generating file: %s" % (time_now_str, processed_filename,))
+
+            try:
+                
+                postprocess_ERA5_sfc.processERA5Sfc(filename, processed_filename,)
+                
+            except Exception as e:
+
+                print("Something goes wrong when generating %s" % (filename,))
+                print(str(e))
+ 
 def wrap_retrieve(job):
 
     job.work()
@@ -102,7 +122,14 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
-    if 5 <= new_d.month and new_d.month <= 9 :
+    if 5 <= new_d.month and new_d.month <= 8 :
+        continue
+ 
+    # We need extra days to compute dSST/dt
+    if new_d.month == 4 and new_d.day != 1:
+        continue
+ 
+    if new_d.month == 9 and new_d.day != 30:
         continue
     
     jobs.append(JOB(new_d))
@@ -113,8 +140,12 @@ print("Total jobs: %d" % (len(jobs),))
 print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
+print("Create dir: %s" % (processed_dir,))
+Path(processed_dir).mkdir(parents=True, exist_ok=True)
 
-with Pool(processes=2) as pool:
+
+
+with Pool(processes=4) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 
