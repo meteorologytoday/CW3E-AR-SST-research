@@ -56,5 +56,37 @@ module Operators
         return fo
     end
 
+    function T_interp_V(
+        fi :: AbstractArray{T, 3},
+        coo :: CoordinateModule.Coordinate;
+    ) where T
+
+        gsp = coo.gsp
+
+        fo = zeros(T, gsp.Nx, gsp.Ny, gsp.Nz)
+        for k=1:gsp.Nz, j=1:gsp.Ny, i=1:gsp.Nx
+            fo[i, j, k] = (fi[i, j, k] + fi[i, j+1, k]) / 2
+        end
+
+        return fo
+    end
+
+
+    function V_∂y_T(
+        fi :: AbstractArray{T, 3},
+        coo :: CoordinateModule.Coordinate,
+    ) where T
+
+        gsp = coo.gsp
+
+        fo = zeros(T, gsp.Nx, gsp.Ny+1, gsp.Nz)
+        for k=1:gsp.Nz, j=2:gsp.Ny, i=1:gsp.Nx
+            fo[i, j, k] = (fi[i, j, k] - fi[i, j-1, k]) / gsp.Δy_V[i, j, 1]
+        end
+
+        return fo
+    end
+
+
 
 end

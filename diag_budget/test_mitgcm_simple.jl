@@ -31,8 +31,7 @@ println("Size of data: ", size(data))
 
 TOTTTEND = data[:, :, :, 5]
 dTOTTTENDdx = Operators.T_mask_T(Operators.T_interp_U( Operators.U_∂x_T(TOTTTEND, coo), coo), coo; fill_value=fill_value)
-
-println(size(dTOTTTENDdx))
+dTOTTTENDdy = Operators.T_mask_T(Operators.T_interp_V( Operators.V_∂y_T(TOTTTEND, coo), coo), coo; fill_value=fill_value)
 
 using NCDatasets
 
@@ -47,6 +46,7 @@ Dataset("test.nc", "c") do ds
     for (varname, vardata, datatype, dimnames) in [
         ("TOTTTEND", TOTTTEND, eltype(TOTTTEND), ("lon", "lat", "z")),
         ("dTOTTTENDdx", dTOTTTENDdx, eltype(dTOTTTENDdx), ("lon", "lat", "z")),
+        ("dTOTTTENDdy", dTOTTTENDdy, eltype(dTOTTTENDdy), ("lon", "lat", "z")),
     ]
 
         _var = defVar(ds, varname, datatype, dimnames; fillvalue=fill_value)
