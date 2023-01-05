@@ -168,12 +168,15 @@ def collectData(AR_evts, varnames, ignorenan=True):
 
 # Plot data
 print("Loading Matplotlib...")
-import matplotlib
+import matplotlib as mpl
 if args.no_display is False:
-    matplotlib.use('TkAgg')
+    mpl.use('TkAgg')
 else:
-    matplotlib.use('Agg')
-    
+    mpl.use('Agg')
+ 
+mpl.rc('font', size=20)
+mpl.rc('axes', labelsize=15)
+   
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.patches import Rectangle
@@ -192,39 +195,44 @@ var_infos = {
     },
 
     'dTdt_sfchf' : {
-        'var'  : "$\\dot{T}_\\mathrm{hf}$",
+        'var'  : "$\\dot{T}_\\mathrm{shf}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_no_sfchf' : {
-        'var'  : "$\\dot{T}_\\mathrm{res}$",
+        'var'  : "$\\dot{T}_\\mathrm{ttl} - \\dot{T}_\\mathrm{shf}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_deepen' : {
-        'var'  : "$\\dot{T}_\\mathrm{ent}$",
+        'var'  : "$\\dot{T}_\\mathrm{e-deep}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'w_deepen' : {
-        'var'  : "$w_\\mathrm{ent}$",
+        'var'  : "$w_\\mathrm{deep}$",
         'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
     },
 
     'vort10' : {
-        'var'  : "$\\zeta$",
+        'var'  : "$\\cdot\\zeta$",
         'unit' : "$ 1 / \\mathrm{s} $",
     },
 
     'curltau' : {
-        'var'  : "$\\Delta \\times \\vec{\\tau}$",
+        'var'  : "$\\hat{k}\\cdot\\nabla \\times \\vec{\\tau}$",
         'unit' : "$ 1 / \\mathrm{s} $",
     },
 
 
     'dTdt_Ekman' : {
-        'var'  : "$\\dot{T}_{\\mathrm{Ek}}$",
+        'var'  : "$\\dot{T}_{\\mathrm{e-Ekman-pump}}$",
         'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
+    },
+
+    'MLD' : {
+        'var'  : "Mixed-layer depth",
+        'unit' : "$ \\mathrm{m}$",
     },
 
 
@@ -285,7 +293,7 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 
 plot_data = [
-    ('dTdt', 'dTdt_sfchf'),    ('U',          'curltau'),       ('U',           'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_sfchf'),    ('curltau',    'dTdt_no_sfchf'),       ('U',           'dTdt_no_sfchf'), ('MLD', 'dTdt_no_sfchf'), 
     ('dTdt', 'dTdt_no_sfchf'), ('dTdt_Ekman', 'dTdt_no_sfchf'), ('dTdt_deepen', 'dTdt_no_sfchf'), 
 ]
 
@@ -298,6 +306,26 @@ if len(plot_data) % rows != 0:
 else:    
     cols = len(plot_data) // rows
 
+
+
+color_info = {
+    'AR_duration': {
+        'cmap' : 'bone_r',
+        'varname'  : 'dt',
+        'factor'   : 1 / 86400.0,
+        'label' : "AR duration [ day ]", 
+        'bnd'   : [0, 10],
+    },
+
+    'watertime': {
+        'cmap' : 'rainbow',
+        'varname'  : 'watertime', 
+        'factor'   : 6.0,  # 6 months
+        'label' : "Watertime [ mon ]",
+        'bnd'   : [0, 6],
+    },
+
+}['watertime']
 
 fig, ax = plt.subplots(rows, cols, figsize=(6*cols, 5*rows), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4))
 
@@ -317,9 +345,17 @@ for i, _plot_data in enumerate(plot_data):
     var_info_y = var_infos[_plot_data[1]]
 
     _ax = ax_flat[i]
-    _data = collectData(AR_evts, dict(X=_plot_data[0], Y=_plot_data[1], Z='dt', month='month', year='year', mid_time='mid_time', picked='do_linregress'))
+    
+    data_needed = {
+        'X': _plot_data[0],
+        'Y': _plot_data[1],
+        'Z': color_info['varname'],
+        'picked': 'do_linregress',
+    }
+    _data = collectData(AR_evts, data_needed)
     #mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']/86400, s=10, cmap='bone_r', vmin=0, vmax=10)
-    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['watertime'], s=5, cmap='rainbow')
+    mappable =  _ax.scatter(_data['X'], _data['Y'], c=_data['Z']*color_info['factor'], s=8, cmap=color_info['cmap'], vmin=color_info['bnd'][0], vmax=color_info['bnd'][1])
+
     #_ax.plot(_data['X'], _data['Y'], "r-")
     plot_linregress(_ax, _data['X'][_data['picked']==True], _data['Y'][_data['picked']==True])
 
@@ -328,7 +364,7 @@ for i, _plot_data in enumerate(plot_data):
     _ax.set_ylabel("%s [ %s ]" % (var_info_y['var'], var_info_y['unit']))
     
     cbar = plt.colorbar(mappable, ax=_ax, orientation='vertical')
-    cbar.ax.set_ylabel("AR duration [ day ]")
+    cbar.ax.set_ylabel(color_info['label'])
 
 for i, _ax in enumerate(ax_flat):
     

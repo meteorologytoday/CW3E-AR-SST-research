@@ -184,41 +184,48 @@ def collectData(AR_evts, varnames, ignorenan=True):
 
 # Plot data
 print("Loading Matplotlib...")
-import matplotlib
+import matplotlib as mpl
 if args.no_display is False:
-    matplotlib.use('TkAgg')
+    mpl.use('TkAgg')
 else:
-    matplotlib.use('Agg')
+    mpl.use('Agg')
     
+
+mpl.rc('axes', labelsize=55)
+mpl.rc('font', size=55)
+#mpl.rcParams['axes.labelsize'] = 35
+print(mpl.rcParams['axis.font'])
+
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.patches import Rectangle
 import matplotlib.transforms as transforms
 from matplotlib.dates import DateFormatter
-from scipy.stats import linregress
 
+
+from scipy.stats import linregress
 print("done")
 
 
 var_infos = {
 
     'dTdt' : {
-        'var'  : "$\dot{T}_\\mathrm{ttl}$",
+        'var'  : "$\\dot{T}_\\mathrm{ttl}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_sfchf' : {
-        'var'  : "$\dot{T}_\\mathrm{hf}$",
+        'var'  : "$\\dot{T}_\\mathrm{shf}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dTdt_no_sfchf' : {
-        'var'  : "$\dot{T}_\\mathrm{res}$",
+        'var'  : "$\\dot{T}_\\mathrm{ttl} - \\dot{T}_\\mathrm{shf}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
     'dSST_deepen' : {
-        'var'  : "$\dot{T}_\\mathrm{ent}$",
+        'var'  : "$\\dot{T}_\\mathrm{ent}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
@@ -279,8 +286,8 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 
 plot_data = [
-    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',           'dTdt_no_sfchf'), 
-    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('dSST_deepen', 'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',           'dTdt_no_sfchf'), ('MLD', 'dTdt_no_sfchf'), 
+    ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('dSST_deepen', 'dTdt_no_sfchf'), None
 ]
 
 

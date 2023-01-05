@@ -46,8 +46,8 @@ if total_days <= 0:
 
 
 
-ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", "EkmanAdv"]
-ORA5_varnames = ["MLD", "db", "T_upper", "T_lower", "dT_Ek"]
+ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
+ORA5_varnames = ["MLD", "db", "dT"]
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -102,7 +102,7 @@ def magicalExtension(_data):
     _data['dT_contribution_to_db'] = buoyancy_linear.g0 * buoyancy_linear.alpha_T * _data['dT'] / _data['db']
 
     _data['w_Ekman']  = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
-    _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT_Ek'] / _data['MLD']
+    _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT'] / _data['MLD']
 
     _data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
     

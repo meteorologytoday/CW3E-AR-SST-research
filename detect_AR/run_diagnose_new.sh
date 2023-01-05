@@ -17,13 +17,11 @@ spatial_rngs=(
 
 AR_dt_rngs=(
     0 50
-    5 50
-    0 5
 )
 
 # Testing
 
-
+#if [ ] ; then
 beg_year=2001
 end_year=2014
 
@@ -32,9 +30,9 @@ spatial_rngs=(
 )
 
 AR_dt_rngs=(
-   5 50
+   0 50
 )
-
+#fi
 
 if [ ] ; then
 python3 count_days_map.py \
@@ -104,7 +102,7 @@ for mld in somxl030  ; do
             output_AR_analysis_fig=$output_dir/analysis_${AR_dt_min}-${AR_dt_max}.png
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" #--no-display
+            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --no-display
 
         done
 
