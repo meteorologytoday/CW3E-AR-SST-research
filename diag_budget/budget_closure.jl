@@ -1,8 +1,8 @@
 using PyCall
 using JLD2
 
-ρ   = 1029.0
-c_p = 3996.0
+ρ   = 1027.5
+c_p = 3994.0
 fill_value = 1e20
 
 include("read_mitgcm_grid.jl")
@@ -80,6 +80,8 @@ oceQsw  = reshape(oceQsw, size(oceQsw)..., 1)
 
 
 
+
+
 #=
 ADVr_TH  = nest(data_3D[:, :, :, 1], :W)
 ADVx_TH  = nest(data_3D[:, :, :, 2], :U)
@@ -104,12 +106,11 @@ oceQsw = reshape(oceQsw, size(oceQsw)..., 1)
 
 println("Compute Qsw flux...")
 
-Qsw_shape(z) = 0.62 * exp.(z/0.6) + (1 - 0.62) * exp.(z/20.0)
+Qsw_shape(z) = ( 0.62 * exp.(z/0.6) + (1 - 0.62) * exp.(z/20.0) ) * (z .>= -200.0)
 SWFLX = - oceQsw .* Qsw_shape(coo.gd.z_W)
 
 SFCFLX_shape(z) = z .>= 0
 SFCFLX = - (oceQnet - oceQsw) .* SFCFLX_shape(coo.gd.z_W)
-
 
 println("Compute tendency...")
 
@@ -131,9 +132,9 @@ TEND_DIFF = - (
 )
 =#
 
-TEND_KPP = - Operators.T_DIVz_W(KPPg_TH, coo)
+TEND_KPP    = - Operators.T_DIVz_W(KPPg_TH, coo)
 
-TEND_SWFLX = - Operators.T_DIVz_W(SWFLX, coo; already_weighted=false) / (ρ*c_p)
+TEND_SWFLX  = - Operators.T_DIVz_W(SWFLX, coo; already_weighted=false) / (ρ*c_p)
 
 TEND_SFCFLX = - Operators.T_DIVz_W(SFCFLX, coo; already_weighted=false) / (ρ*c_p)
 
