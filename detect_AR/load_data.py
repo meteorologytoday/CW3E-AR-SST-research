@@ -58,7 +58,7 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
 
         timestr = date.strftime("%Y-%m")
 
-        if varname in ["MLD", "T_upper", "T_lower", "S_upper", "S_lower", "db"]:
+        if varname in ["MLD", "T_upper", "T_lower", "S_upper", "S_lower", "db", "dT"]:
 
             mxl_algo = kwargs['mxl_algo']
 

@@ -20,6 +20,7 @@ parser.add_argument('--end-year', type=int, help='Date string: yyyy-mm-dd', requ
 parser.add_argument('--output-dir', type=str, help='Output directory', default="")
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
+parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
 parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
 
 args = parser.parse_args()
@@ -79,7 +80,7 @@ def magicalExtension(_data):
     #_data["MLD"] *= 2
 
     _data['U']   = np.sqrt(_data['u10']**2 + _data['v10']**2)
-    _data['dT']  = _data['T_upper'] - _data['T_lower']
+    #_data['dT']  = _data['T_upper'] - _data['T_lower']
     _data['hdb'] = _data['MLD'] * _data['db']
 
     #                           shortwave            longwave          sensible            latent
@@ -105,7 +106,14 @@ def magicalExtension(_data):
     _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT'] / _data['MLD']
 
     _data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
-    
+ 
+
+with netCDF4.Dataset(args.mask, "r") as ds:
+       
+    print("Loading mask file: %s" % (args.mask,))
+    landsea_mask = np.ma.array(ds.variables["mask"][:], keep_mask=False)  # 1=ocean, 0=land
+    mask = (1 - landsea_mask).astype(bool) # in masked_array, unused grid are denoted with "true"
+    #print("Sum of mask (): ", np.sum(mask.mask))
 
 for d, _t in enumerate(t_vec):
         
@@ -149,6 +157,10 @@ for d, _t in enumerate(t_vec):
                         lat = ERA5_lat_raw[lat_idx]
                         lon = ERA5_lon_raw[lon_idx]
                         wgt = np.cos(lat * np.pi / 180)
+
+                        mask = mask[lat_idx, :][:, lon_idx]
+
+                        print("Shape of mask: ", mask.shape)
 
                         f_co = 2 * ec.Omega * np.sin(np.pi / 180 * lat)
 
@@ -260,7 +272,13 @@ for d, _t in enumerate(t_vec):
 
 
     for varname, var_data in _data.items():
-        ts[varname][d] = np.average(np.average( _data[varname], axis=1), weights=wgt)
+        _tmp_data = np.ma.array(
+            _data[varname],
+            keep_mask=False,
+            mask=mask,
+        )
+
+        ts[varname][d] = np.average(np.average( _tmp_data, axis=1), weights=wgt)
 
 
 print("Exclude non-consecutive years")

@@ -26,13 +26,19 @@ beg_year=2001
 end_year=2014
 
 spatial_rngs=(
-    30 50 -160 -130
+    31 43 230 244
 )
 
 AR_dt_rngs=(
    0 50
 )
 #fi
+
+mask_file="ERA5_mask.nc"
+if [ ! -f "$mask_file" ]; then
+    echo "Mask file $mask_file does not exist. Generating now..."
+    python3 make_mask_ERA5.py
+fi
 
 if [ ] ; then
 python3 count_days_map.py \
@@ -83,6 +89,7 @@ for mld in somxl030  ; do
                 --lat-rng $lat_min $lat_max \
                 --lon-rng $lon_min $lon_max \
                 --mld $mld \
+                --mask $mask_file \
                 --output-dir $output_dir
         fi
        
