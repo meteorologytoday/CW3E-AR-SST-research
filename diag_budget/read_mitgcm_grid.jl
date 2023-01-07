@@ -27,6 +27,7 @@ function readMITgcmGrid_MM(
     maskInS :: String = "maskInS",
     maskInW :: String = "maskInW",
     verbose :: Bool = false,
+    vertical_layers :: Union{Colon(), UnitRange} = Colon(),
 )
 
     m = pyimport("MITgcmutils")
@@ -61,6 +62,12 @@ function readMITgcmGrid_MM(
         verbose && println("$varname => ", size(c[varname]))
         c[varname] = permutedims(c[varname], permute)
     end
+
+            
+    c[:DRC] = c[:DRC][]
+    :DRC => DRC,
+        :DRF => DRF,
+
 
     #println(size(c[:DXG]))
     #println(size(c[:DYG]))
