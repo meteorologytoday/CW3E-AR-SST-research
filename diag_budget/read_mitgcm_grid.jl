@@ -1,7 +1,18 @@
-include("CoordinateModule.jl")
+if !(:CoordinateModule in names(Main))
+    include(normpath(joinpath(dirname(@__FILE__), "CoordinateModule.jl")))
+end
+
 using PyCall
 using Formatting
 
+function readMITgcmData(
+)
+
+    mitgcm = pyimport("MITgcmutils")
+    data_2D = mitgcm.mds.rdmds("$data_dir/diag_2D", iters,    lev=collect(lev)) |> py2jl
+
+end
+ 
 #=
 
 Matthew only outputs grid box lengths for T, U, and V grids.
@@ -27,7 +38,7 @@ function readMITgcmGrid_MM(
     maskInS :: String = "maskInS",
     maskInW :: String = "maskInW",
     verbose :: Bool = false,
-    vertical_layers :: Union{Colon(), UnitRange} = Colon(),
+    lev :: Union{Colon(), UnitRange} = Colon(),
 )
 
     m = pyimport("MITgcmutils")
@@ -63,15 +74,19 @@ function readMITgcmGrid_MM(
         c[varname] = permutedims(c[varname], permute)
     end
 
-            
-    c[:DRC] = c[:DRC][]
-    :DRC => DRC,
-        :DRF => DRF,
+    if lev == Colon()
+        lev = 1:length(c[:DRF])
+    end
 
+    lev_T = lev
+    lev_W = lev[1]:(lev[end]+1)
 
-    #println(size(c[:DXG]))
-    #println(size(c[:DYG]))
-    #println(size(c[:RAC]))
+    # Subset the z-coordinate     
+    c[:DRF] = c[:DRF][lev_T]
+    c[:DRC] = c[:DRC][lev_T]
+    c[:RC] = c[:RC][lev_T]
+    c[:RF] = c[:RF][lev_W]
+
 
     Nx, Ny = size(c[:DXG])
     Nz = length(c[:DRF])

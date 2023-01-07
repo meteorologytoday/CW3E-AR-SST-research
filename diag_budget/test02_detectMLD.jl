@@ -5,7 +5,7 @@ using JLD2
 c_p = 3994.0
 fill_value = 1e20
 
-include("read_mitgcm_grid.jl")
+include("MITgcmTools.jl")
 include("Operators.jl")
 include("Operators_ML.jl")
 
@@ -42,20 +42,26 @@ grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
 coo = readMITgcmGrid_MM(grid_dir, verbose=true)
 
+lev = 1:50
 #iters = 386400
 iters = 388800
-data_3D = mitgcm.mds.rdmds("$data_dir/diag_state", iters) |> py2jl
-data_2D = mitgcm.mds.rdmds("$data_dir/diag_2D", iters) |> py2jl
+data_3D = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, lev=collect(lev), returnmeta=True))
+data_2D = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iters,    lev=collect(lev), returnmeta=True))
+
 
 println("Size of data_3D: ", size(data_3D))
 println("Size of data_2D: ", size(data_2D))
 
 
+
+
+
+
 println("Loading data...")
 
-TEMP   = data_3D[:, :, :,  1]
-SALT   = data_3D[:, :, :,  2]
-KPPhbl = data_2D[:, :, 13]
+TEMP   = data_3D["THETA"]
+SALT   = data_3D["SALIN"]
+KPPhbl = data_2D["KPPhbl"]
 
 MLD, bundle = Operators_ML.detectMLD(TEMP, SALT, coo)
 MLD_compromised = maxarr(MLD, KPPhbl)
