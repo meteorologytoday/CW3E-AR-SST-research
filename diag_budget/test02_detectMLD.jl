@@ -39,18 +39,19 @@ mitgcm = pyimport("MITgcmutils")
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
 grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
-
-coo = readMITgcmGrid_MM(grid_dir, verbose=true)
-
 lev = 1:50
+
+
+coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev)
+
 #iters = 386400
 iters = 388800
-data_3D = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, lev=collect(lev), returnmeta=True))
-data_2D = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iters,    lev=collect(lev), returnmeta=True))
+data_3D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, lev=collect(lev), returnmeta=true))
+data_2D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iters, returnmeta=true))
 
 
-println("Size of data_3D: ", size(data_3D))
-println("Size of data_2D: ", size(data_2D))
+println("Varnames of data_3D: ", keys(data_3D))
+println("Varnames of data_2D: ", keys(data_2D))
 
 
 
@@ -60,7 +61,7 @@ println("Size of data_2D: ", size(data_2D))
 println("Loading data...")
 
 TEMP   = data_3D["THETA"]
-SALT   = data_3D["SALIN"]
+SALT   = data_3D["SALT"]
 KPPhbl = data_2D["KPPhbl"]
 
 MLD, bundle = Operators_ML.detectMLD(TEMP, SALT, coo)

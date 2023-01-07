@@ -22,14 +22,15 @@ module MITgcmTools
     function genDataDictionary(
         data      :: AbstractArray,
         metadata  :: Dict,
-        copy_data :: Bool = False,
+        copy_data :: Bool = false,
     )
 
+        println(metadata)
 
-        dimlist = metadata["dimList"]
-        Ndims = Int(length(dimlist) / 3)  # last dimension is the record dimension
+        dimlist = metadata["dimlist"]
+        Ndims = length(dimlist)
         
-        spatial_selector = Tuple([ Colon() for i=1:(Ndims-1) ])
+        spatial_selector = Tuple([ Colon() for i=1:Ndims ])
         
         data_dict = Dict()
         for (i, fldname) in enumerate(metadata["fldlist"])
@@ -73,7 +74,7 @@ module MITgcmTools
         maskInS :: String = "maskInS",
         maskInW :: String = "maskInW",
         verbose :: Bool = false,
-        lev :: Union{Colon(), UnitRange} = Colon(),
+        lev :: Union{Colon, UnitRange} = Colon(),
     )
 
         m = pyimport("MITgcmutils")
