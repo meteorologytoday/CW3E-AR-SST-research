@@ -1,3 +1,4 @@
+*.csv
 *.nc
 *.tmp*
 *.swp
