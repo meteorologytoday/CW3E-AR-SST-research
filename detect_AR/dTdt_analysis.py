@@ -2,6 +2,7 @@ import numpy as np
 import netCDF4
 import AR_tools, NK_tools, fmon_tools, watertime_tools
 import anomalies
+import pandas as pd
 
 import traceback
 from pathlib import Path
@@ -16,6 +17,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--input', type=str, help='Input file', required=True)
 parser.add_argument('--output', type=str, help='Output file', default="")
 parser.add_argument('--AR-dt-rng', type=float, nargs=2, help='Days of AR duration to do linear regression.', default=[0.0, 30.0])
+parser.add_argument('--IVT-threshold', type=float, help='Threshold of IVT to determin AR condition.', default=250.0)
+parser.add_argument('--output-database', type=str, help='CSV file.', default="")
 parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
@@ -61,7 +64,7 @@ def within(a, m, M):
 
 data['ttl']['IVT'][np.isnan(data['ttl']['IVT'])] = 0.0
 
-AR_t_segs, AR_t_inds = AR_tools.detectAbove(data_dim['time'], data['ttl']['IVT'], 250.0, glue_threshold=timedelta(hours=24))
+AR_t_segs, AR_t_inds = AR_tools.detectAbove(data_dim['time'], data['ttl']['IVT'], args.IVT_threshold, glue_threshold=timedelta(hours=24))
 
 
 for i, AR_t_seg in enumerate(AR_t_segs):
@@ -85,6 +88,8 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evt['dTdt'] = np.mean(data['ttl']['dTdt'][ind])
     
     mid_time = time[ind_first] + (time[ind_last] - time[ind_first]) / 2
+    AR_evt['datetime_beg'] = time[ind_first]
+    AR_evt['datetime_end'] = time[ind_last]
     AR_evt['mid_time'] = mid_time.timestamp()
     AR_evt['month'] = mid_time.month
     AR_evt['year'] = mid_time.year + 1 if within(mid_time.month, 10, 12) else mid_time.year
@@ -132,6 +137,29 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evts.append(AR_evt)
 
 
+_AR_evts = []
+for AR_evt in AR_evts:
+    if AR_evt is not None:
+        _AR_evts.append(AR_evt)
+
+AR_evts = _AR_evts
+_AR_evts = None
+
+
+if args.output_database != "":
+    # Convert to a dataframe
+    colnames = AR_evts[0].keys()
+    database = { colname : [] for colname in colnames }
+
+    for i, AR_evt in enumerate(AR_evts):
+        
+        for colname in colnames:
+            database[colname].append(AR_evt[colname]) 
+
+    
+    df = pd.DataFrame.from_dict(database, orient='columns')
+    df.to_csv(args.output_database)
+        
 def collectData(AR_evts, varnames, ignorenan=True):
 
     data = {}

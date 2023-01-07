@@ -21,6 +21,7 @@ parser.add_argument('--output-dir', type=str, help='Output directory', default="
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
+parser.add_argument('--ocn-dataset', type=str, help='The ocean. Can be `ORA5`, `ORA5-clim`', choices=['ORA5', 'ORA5-clim'], required=True)
 parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
 
 args = parser.parse_args()
@@ -66,7 +67,7 @@ lon = None
 wgt = None
 f_co = None
 
-computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'dT_contribution_to_db', 'dTdt_Ekman', 'w_Ekman']
+computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'dTdt_Ekman', 'w_Ekman']
 
 ts = { varname : np.zeros((total_days,), dtype=np.float32) 
     for varname in (ERA5_varnames + ORA5_varnames + computed_vars) 
@@ -99,8 +100,6 @@ def magicalExtension(_data):
     _data['dTdt_sfchf'] = _data['net_sfc_hf'] / (3996*1026 * _data['MLD'])
     _data['dTdt_no_sfchf'] = _data['dTdt'] - _data['dTdt_sfchf']
 
-
-    _data['dT_contribution_to_db'] = buoyancy_linear.g0 * buoyancy_linear.alpha_T * _data['dT'] / _data['db']
 
     _data['w_Ekman']  = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
     _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT'] / _data['MLD']
@@ -226,8 +225,8 @@ for d, _t in enumerate(t_vec):
 
                 load_varname = varname
                 
-                info_l = load_data.getFileAndIndex("ORA5", _t_l, root_dir="data", varname=varname, mxl_algo=args.mld)
-                info_r = load_data.getFileAndIndex("ORA5", _t_r, root_dir="data", varname=varname, mxl_algo=args.mld)
+                info_l = load_data.getFileAndIndex(args.ocn_dataset, _t_l, root_dir="data", varname=varname, mxl_algo=args.mld)
+                info_r = load_data.getFileAndIndex(args.ocn_dataset, _t_r, root_dir="data", varname=varname, mxl_algo=args.mld)
                 tmp_l = None
                 tmp_r = None
 

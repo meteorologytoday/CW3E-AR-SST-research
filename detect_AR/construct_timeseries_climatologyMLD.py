@@ -19,7 +19,7 @@ parser.add_argument('--output-dir', type=str, help='Output directory', default="
 parser.add_argument('--products', type=str, nargs="+", help='Forcast products.', default=["GFS",])
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--mld', type=str, help='The mixed layer specifier. Can be `50` or `95`', choices=['50', '95'], required=True)
+parser.add_argument('--mld-data', type=str, help='The mixed-layer data. Can be `ORA5`, `clim50` or `clim95`', choices=['clim50', 'clim95', 'ORA5'], required=True)
 parser.add_argument('--save', action="store_true", help='Save the timeseries into an npz file')
 
 

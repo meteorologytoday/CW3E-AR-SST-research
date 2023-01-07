@@ -1,4 +1,6 @@
-
+if !(:CoordinateModule in names(Main))
+    include(normpath(joinpath(dirname(@__FILE__), "CoordinateModule.jl")))
+end
 
 module Operators
 

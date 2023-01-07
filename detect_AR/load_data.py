@@ -79,6 +79,34 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
         lat = "lat"
         lon = "lon"
 
+    elif product == "ORA5-clim":
+
+        timestr = date.strftime("%m")
+
+        if varname in ["MLD", "T_upper", "T_lower", "S_upper", "S_lower", "db", "dT"]:
+
+            mxl_algo = kwargs['mxl_algo']
+
+            if mxl_algo in ['somxl010', 'somxl030']:
+
+                filename = "ORA5_NillerKrausMixedLayerDynamics_%s_%s.nc" % (mxl_algo, timestr)
+                kwargs['beg_year'] = 2001
+                kwargs['end_year'] = 2014
+                subfolder = "processed_remapped_clim_%04d-%04d" % (kwargs['beg_year'], kwargs['end_year']) 
+
+            else:
+                raise Exception("Unknown mixed-layer algorithm %s" % (mxl_algo,))
+
+        else:
+            raise Exception("Unrecognized varname: %s " % (varname,) )
+
+
+        filename = os.path.join(root_dir, "ORA5", subfolder, filename)
+        idx = 0
+        lat = "lat"
+        lon = "lon"
+
+
 
     else:
         raise Exception("Unrecognized product: %s" % (product,))

@@ -2,8 +2,13 @@
 
 . pretty_latlon.sh
 
+
+ocn_dataset="ORA5-clim"
+        
+output_root=output_${ocn_dataset}
+
 beg_year=2001
-end_year=2014
+end_year=2021
 
 
 
@@ -23,7 +28,7 @@ AR_dt_rngs=(
 
 #if [ ] ; then
 beg_year=2001
-end_year=2014
+end_year=2021
 
 spatial_rngs=(
     31 43 230 244
@@ -59,7 +64,7 @@ for mld in somxl030  ; do
         time_str=$( printf "%04d-%04d" $beg_year $end_year )
         spatial_str=$( printf "%s-%s_%s-%s" $( pretty_lat $lat_min ) $( pretty_lat $lat_max ) $( pretty_lon $lon_min ) $( pretty_lon $lon_max )  )
         mld_str="mld${mld}"
-        output_dir=output/${time_str}_${spatial_str}_${mld_str}
+        output_dir=$output_root/${time_str}_${spatial_str}_${mld_str}
 
         echo "time_str    : $time_str"    
         echo "spatial_str : $spatial_str"
@@ -89,17 +94,19 @@ for mld in somxl030  ; do
                 --lat-rng $lat_min $lat_max \
                 --lon-rng $lon_min $lon_max \
                 --mld $mld \
+                --ocn-dataset $ocn_dataset \
                 --mask $mask_file \
                 --output-dir $output_dir
         fi
        
         #if [ ]; then 
         #if [ ] ; then
-        output_AR_evts_database=$output_dir/AR_evts.csv
-        echo "Generating analysis: $output_AR_evts_database"
-        python3 dTdt_decomposition_and_output.py --input $output_AR_file --output "$output_AR_evts_database"
+
+        #echo "Generating analysis: $output_AR_evts_database"
+        #python3 dTdt_decomposition_and_output.py --input $output_AR_file --output "$output_AR_evts_database"
         
         #fi
+
 
         for j in $( seq 1 $(( "${#AR_dt_rngs[@]}" / 2 )) ); do
 
@@ -107,9 +114,10 @@ for mld in somxl030  ; do
             AR_dt_max=${AR_dt_rngs[$(( ( j - 1 ) * 2 + 1 ))]}
             
             output_AR_analysis_fig=$output_dir/analysis_${AR_dt_min}-${AR_dt_max}.png
+            output_AR_evts_database=$output_dir/AR_evts.csv
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --no-display
+            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --IVT-threshold 250.0 --output-database $output_AR_evts_database --no-display
 
         done
 
