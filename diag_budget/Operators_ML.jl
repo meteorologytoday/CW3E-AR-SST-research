@@ -24,23 +24,50 @@ module Operators_ML
         coo :: CoordinateModule.Coordinate;
         h    :: AbstractArray{T, 2},
         Nz_h :: Union{AbstractArray{T, 2}, Nothing} = nothing,
+        do_avg :: Bool = false,
     ) where T
 
         gsp = coo.gsp
+        gd = coo.gd
+        Δz_T = view(gsp.Δz_T, 1, 1, :)
+        z_W = view(coo.gd.z_W, 1, 1, :)
+        mask_T = coo.gd.mask_T
 
-        fo = zeros(T, gsp.Nx, gsp.Ny, 1)
+        fo = zeros(T, gsp.Nx, gsp.Ny)
         
         if Nz_h == nothing
             Nz_h = detectMLNz(h, coo)
         end
 
 
-        for k=1:gsp.Nz, j=1:gsp.Ny, i=1:gsp.Nx
+        for j=1:gsp.Ny, i=1:gsp.Nx
+            
+            _tmp = 0.0
+            
             if mask_T[i, j, 1] == 0
-                fo[i, j, k] = fill_value
+                fo[i, j] = fill_value
+            else
+                _Nz = Nz_h[i, j]
+                for k=1:_Nz-1
+                    _tmp += Δz_T[k] * fi[i, j, k]
+                end
+
+                _tmp += (z_W[_Nz] + h[i, j]) * fi[i, j, _Nz]
+                
+            end
+
+            fo[i, j] = _tmp
+        end
+
+        if do_avg
+            for j=1:gsp.Ny, i=1:gsp.Nx
+                if mask_T[i, j, 1] != 0
+                    fo[i, j] /= h[i, j]
+                end
             end
         end
 
+        
         return fo
     end
 
