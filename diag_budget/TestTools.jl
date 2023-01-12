@@ -2,164 +2,107 @@ if !(:CoordinateModule in names(Main))
     include(normpath(joinpath(dirname(@__FILE__), "CoordinateModule.jl")))
 end
 
-module
+module TestTools
 
-    function genGrid(;
-        λ_U :: AbstractArray{T, 1},
-        ϕ_V :: AbstractArray{T, 1},
-        z_W :: AbstractArray{T, 1},
+    using Formatting
+    using ..CoordinateModule
+
+    function genGrid(
+        raw_λ_U :: AbstractArray{T, 1},
+        raw_ϕ_V :: AbstractArray{T, 1},
+        raw_z_W :: AbstractArray{T, 1};
         R :: Float64 = 6.371e6,
     ) where T
-        Nx = length(λ_U) - 1
-        Ny = length(ϕ_V) - 1
-        Nz = length(z_W) - 1
-        
-        λ_T = (λ_U[1:end-1] + λ_U[2:end]) / 2
-        ϕ_T = (ϕ_V[1:end-1] + ϕ_V[2:end]) / 2
-        z_T = (ϕ_V[1:end-1] + ϕ_V[2:end]) / 2
- 
-        elt = T
+
+        Nx = length(raw_λ_U) - 1
+        Ny = length(raw_ϕ_V) - 1
+        Nz = length(raw_z_W) - 1
 
         println(format("(Nx, Ny, Nz) = ({:d}, {:d}, {:d})", Nx, Ny, Nz))
 
-        c = Dict(
-            :XC => λ_T,
-            :XG => λ_U,
-            :YC => ϕ_T,
-            :YG => ϕ_V,
-
-        )
-
         # ===== [ λ ] ===== 
 
-        λ_T  = zeros(elt, Nx, Ny, 1)
-        λ_U  = zeros(elt, Nx+1, Ny, 1)
-        λ_V  = zeros(elt, Nx, Ny+1, 1)
-        λ_W  = zeros(elt, Nx, Ny, 1)
-        λ_UV = zeros(elt, Nx+1, Ny+1, 1)
+        λ_U = repeat(reshape(raw_λ_U, :, 1, 1), outer=(1, Ny, 1))
+        λ_T  = (λ_U[1:end-1, :, :] + λ_U[2:end, :, :]) / 2
+        λ_V  = repeat(λ_T[:, 1:1, :], outer=(1, Ny+1, 1))
+        λ_UV = repeat(reshape(raw_λ_U, 1, :, 1), outer=(1, Ny+1, 1))
 
-        λ_T[:, :, 1] = c[:XC]
-        λ_T[:] = (λ_U[1:end-1] + λ_U[2:end]) / 2
-
-        λ_U[1:Nx, :, 1] = c[:XG]
-        λ_U[Nx+1, :, 1] = 2 * λ_U[Nx, :, 1] - λ_U[Nx-1, :, 1] # This is the best I can do
-
-        λ_V[:, 2:Ny, 1] = (λ_T[:, 1:Ny-1, :, 1] + λ_T[:, 2:Ny, 1] ) / 2
-        λ_V[:,    1, 1] = λ_V[:,  2, 1]
-        λ_V[:, Ny+1, 1] = λ_V[:, Ny, 1]
-
-        λ_W .= λ_T
-     
+        λ_W = copy(λ_T) 
 
         # ===== [ ϕ ] ===== 
 
-        ϕ_T  = zeros(elt, Nx, Ny, 1)
-        ϕ_U  = zeros(elt, Nx+1, Ny, 1)
-        ϕ_V  = zeros(elt, Nx, Ny+1, 1)
-        ϕ_W  = zeros(elt, Nx, Ny, 1)
-        ϕ_UV = zeros(elt, Nx+1, Ny+1, 1)
+        ϕ_V = repeat(reshape(raw_ϕ_V, 1, :, 1), outer=(Nx, 1, 1))
+        ϕ_T  = (ϕ_V[:, 1:end-1, :] + ϕ_V[:, 2:end, :]) / 2
+        ϕ_U  = repeat(ϕ_T[1:1, :, :], outer=(Nx+1, 1, 1))
+        ϕ_UV = repeat(reshape(raw_ϕ_V, 1, :, 1), outer=(Nx+1, 1, 1))
 
-        ϕ_T[:, :, 1] = c[:YC]
-
-        ϕ_V[:, 1:Ny, 1] = c[:YG]
-        ϕ_V[:, Ny+1, 1] = 2 * ϕ_V[:, Ny, 1] - ϕ_V[: , Ny-1, 1] # This is the best I can do
-
-        ϕ_U[2:Nx, :, 1] = (ϕ_T[1:Nx-1, :, 1] + λ_T[2:Nx, :, 1] ) / 2
-        ϕ_U[1,    :, 1] = ϕ_U[2,  :, 1]
-        ϕ_U[Nx+1, :, 1] = ϕ_U[Nx, :, 1]
-
-        ϕ_W .= ϕ_T
+        ϕ_W = copy(ϕ_T)
      
         # ===== [ z ] ===== 
 
-        z_T  = zeros(elt, 1, 1, Nz)
-        z_U  = zeros(elt, 1, 1, Nz)
-        z_V  = zeros(elt, 1, 1, Nz)
-        z_UV  = zeros(elt, 1, 1, Nz)
-        z_W  = zeros(elt, 1, 1, Nz+1)
+        z_W = reshape(copy(raw_z_W), 1, 1, :)
 
-        z_T[1, 1, :] = c[:RC]
-        z_U  .= z_T
-        z_V  .= z_T
-        z_UV .= z_T
-        z_W[1, 1, :] = c[:RF]
-
-
+        z_T = ( z_W[:, :, 1:end-1] + z_W[:, :, 2:end] ) / 2
+        z_U  = copy(z_T)
+        z_V  = copy(z_T)
+        z_UV = copy(z_T)
 
         # ===== [ mask ] ===== 
 
-        mask_T = zeros(elt, Nx, Ny, 1)
-        mask_T[:, :, 1] = c[:maskInC]
+        mask_T = ones(T, Nx, Ny, 1)
 
         # ===== [ Δx ] ===== 
 
-        Δx_T  = zeros(elt, Nx, Ny, 1)
-        Δx_U  = zeros(elt, Nx+1, Ny, 1)
-        Δx_V  = zeros(elt, Nx, Ny+1, 1)
-        Δx_W  = zeros(elt, Nx, Ny, 1)
-        Δx_UV = zeros(elt, Nx+1, Ny+1, 1)
-
-        Δx_V[:, 1:Ny, 1] = c[:DXG]
-        Δx_V[:, Ny+1, 1] = c[:DXG][:, Ny] # Repeat is the best I can do
-
-        # It should be DXF and DYF but it is not output
-        Δx_T[:, :, 1] = (Δx_V[:, 1:Ny, 1] + Δx_V[:, 2:Ny+1, 1]) / 2
-        Δx_W .= Δx_T
-
-        Δx_U[1:Nx, :, 1] = c[:DXC]
-        Δx_U[Nx+1, :, 1] = c[:DXC][Nx, :] # Repeat is the best I can do
+        raw_Δλ_T = raw_λ_U[2:end] - raw_λ_U[1:end-1]
+        raw_Δλ_U = zeros(T, Nx+1)
+        raw_Δλ_U[2:end-1] = (raw_Δλ_T[1:end-1] + raw_Δλ_T[2:end]) / 2
+        raw_Δλ_U[1]   = raw_Δλ_U[2]
+        raw_Δλ_U[end] = raw_Δλ_U[end-1]
         
-        Δx_UV[:, 2:Ny, 1] = (Δx_U[:, 1:Ny-1, 1] + Δx_U[:, 2:Ny, 1]) / 2 
-        Δx_UV[:,   1, 1] = Δx_UV[:,     2, 1]
-        Δx_UV[:, end, 1] = Δx_UV[:, end-1, 1]
+        Δλ_T   = repeat( reshape(raw_Δλ_T, :, 1, 1), outer=(1, Ny,   1) )
+        Δλ_U   = repeat( reshape(raw_Δλ_U, :, 1, 1), outer=(1, Ny,   1) )
+        Δλ_V   = repeat( reshape(raw_Δλ_T, :, 1, 1), outer=(1, Ny+1, 1) )
+        Δλ_UV  = repeat( reshape(raw_Δλ_U, :, 1, 1), outer=(1, Ny+1, 1) )
 
-
-
+        Δx_T   = R * cos.(deg2rad.(ϕ_T))  .* deg2rad.(Δλ_T)
+        Δx_U   = R * cos.(deg2rad.(ϕ_U))  .* deg2rad.(Δλ_U)
+        Δx_V   = R * cos.(deg2rad.(ϕ_V))  .* deg2rad.(Δλ_V)
+        Δx_UV  = R * cos.(deg2rad.(ϕ_UV)) .* deg2rad.(Δλ_UV)
+        Δx_W   = copy(Δx_T)
+        
         # ===== [ Δy ] ===== 
 
-        Δy_T  = zeros(elt, Nx, Ny, 1)
-        Δy_U  = zeros(elt, Nx+1, Ny, 1)
-        Δy_V  = zeros(elt, Nx, Ny+1, 1)
-        Δy_W  = zeros(elt, Nx, Ny, 1)
-        Δy_UV = zeros(elt, Nx+1, Ny+1, 1)
+        raw_Δϕ_T = raw_ϕ_V[2:end] - raw_ϕ_V[1:end-1]
+        raw_Δϕ_V = zeros(T, Ny+1)
+        raw_Δϕ_V[2:end-1] = (raw_Δϕ_T[1:end-1] + raw_Δϕ_T[2:end]) / 2
+        raw_Δϕ_V[1]   = raw_Δϕ_V[2]
+        raw_Δϕ_V[end] = raw_Δϕ_V[end-1]
+ 
+        Δϕ_T   = repeat( reshape(raw_Δϕ_T, 1, :, 1), outer=(Nx,   1,   1) )
+        Δϕ_U   = repeat( reshape(raw_Δϕ_T, 1, :, 1), outer=(Nx+1, 1,   1) )
+        Δϕ_V   = repeat( reshape(raw_Δϕ_V, 1, :, 1), outer=(Nx,   1,   1) )
+        Δϕ_UV  = repeat( reshape(raw_Δϕ_V, 1, :, 1), outer=(Nx+1, 1,   1) )
 
-        Δy_U[1:Nx, :, 1] = c[:DYG]
-        Δy_U[Nx+1, :, 1] = c[:DYG][Nx, :] # Repeat is the best I can do
-
-        # It should be DXF and DYF but it is not output
-        Δy_T[:, :, 1] = (Δy_U[1:Nx, :, 1] + Δy_U[2:Nx+1, :, 1]) / 2
-        Δy_W .= Δy_T
-
-        Δy_V[:, 1:Ny, 1] = c[:DYC]
-        Δy_V[:, Ny+1, 1] = c[:DYC][:, Ny] # Repeat is the best I can do
-        
-        Δy_UV[:, 2:Ny, 1] = (Δy_U[:, 1:Ny-1, 1] + Δy_U[:, 2:Ny, 1]) / 2 
-        Δy_UV[:,   1, 1] = Δy_UV[:,     2, 1]
-        Δy_UV[:, end, 1] = Δy_UV[:, end-1, 1]
-
+        Δy_T  = R * deg2rad.(Δϕ_T) 
+        Δy_U  = R * deg2rad.(Δϕ_T) 
+        Δy_V  = R * deg2rad.(Δϕ_T) 
+        Δy_UV = R * deg2rad.(Δϕ_T) 
+        Δy_W  = copy(Δy_T)
 
         # ===== [ Δz ] ===== 
 
-        Δz_T  = zeros(elt, 1, 1, Nz)
-        Δz_U  = zeros(elt, 1, 1, Nz)
-        Δz_V  = zeros(elt, 1, 1, Nz)
-        Δz_W  = zeros(elt, 1, 1, Nz+1)
-        Δz_UV = zeros(elt, 1, 1, Nz)
+        Δz_T  = z_W[:, :, 1:end-1] - z_W[:, :, 2:end]
+        Δz_U  = copy(Δz_T)
+        Δz_V  = copy(Δz_T)
+        Δz_UV = copy(Δz_T)
+        Δz_W  = zeros(T, 1, 1, Nz+1)
 
-        Δz_T[1, 1, :] = c[:DRF]
-        Δz_U .= Δz_T
-        Δz_V .= Δz_T
-        Δz_UV .= Δz_T 
+        Δz_W[:, :, 2:end-1] = (Δz_T[:, :, 1:end-1] + Δz_T[:, :, 2:end]) / 2
+        Δz_W[:, :, 1]   = Δz_T[:, :, 1]
+        Δz_W[:, :, end] = Δz_T[:, :, end]
         
-        Δz_W[1, 1, 2:Nz] = c[:DRC][1:Nz-1]
-        Δz_W[1, 1, 1]    = Δz_W[1, 1, 2]
-        Δz_W[1, 1, Nz+1] = Δz_W[1, 1, Nz]
-
-
-
         # ===== [ Δa ] =====
-        Δa_T  = zeros(elt, Nx, Ny, 1)
-        Δa_T[:, :, 1] = c[:RAC]
+        Δa_T  = Δx_T .* Δy_T
 
         gd = CoordinateModule.Grid(
 
@@ -262,6 +205,6 @@ module
 
     end
 
-
+=#
 
 end
