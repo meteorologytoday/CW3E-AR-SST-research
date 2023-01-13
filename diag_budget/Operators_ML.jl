@@ -19,6 +19,9 @@ module Operators_ML
     using ..Operators
     using ..BuoyancyNonlinear
 
+
+    fill_value = 1e20
+
     function sT_ML∫dz_T(
         fi :: AbstractArray{T, 3},
         coo :: CoordinateModule.Coordinate;
@@ -162,30 +165,70 @@ module Operators_ML
         return MLNz
         
     end
-
     function evalAtMLD_W(
-        h   :: AbstractArray{T, 2},
-        coo :: CoordinateModule.Coordinate,
+        fi  :: AbstractArray{T, 3},
+        coo :: CoordinateModule.Coordinate;
+        h    :: AbstractArray{T, 2},
+        Nz_h :: Union{AbstractArray{T, 2}, Nothing} = nothing,
+        mask_T :: Union{AbstractArray, Nothing} = nothing,
     ) where T
 
         gd = coo.gd
-
-        MLNz = zeros(Int64, gd.Nx, gd.Ny)
         z_W = view(gd.z_W, 1, 1, :)
-       
+        Δz_T = view(coo.gsp.Δz_T, 1, 1, :)
+        mask_T = gd.mask_T
+
+        fo = zeros(T, gd.Nx, gd.Ny)
+
+        if Nz_h == nothing
+            Nz_h = detectMLNz(h, coo)
+        end
+
         for j=1:gd.Ny, i=1:gd.Nx
-            
-            z = - h[i, j]
-            for k=1:gd.Nz
-                if z_W[k] >= z >= z_W[k+1]   # Using 2 equalities so that the last grid-box will include z = z_bottom
-                    MLNz[i, j] = k
-                    break
-                end
-            end
-            
+
+            if mask_T[i, j] == 0
+                fo[i, j] = fill_value
+            else
+                _Nz = Nz_h[i, j]
+                _h  = h[i, j]
+                fo[i, j] = fi[i, j, _Nz] + (fi[i, j, _Nz+1] - fi[i, j, _Nz]) * (z_W[_Nz] + h) / Δz_T[_Nz]
+            end        
         end
         
-        return MLNz
+        return fo
+        
+    end
+
+
+    function evalAtMLD_T(
+        fi  :: AbstractArray{T, 3},
+        coo :: CoordinateModule.Coordinate;
+        h    :: AbstractArray{T, 2},
+        Nz_h :: Union{AbstractArray{T, 2}, Nothing} = nothing,
+    ) where T
+
+        gd = coo.gd
+        z_W = view(gd.z_W, 1, 1, :)
+        Δz_T = view(coo.gsp.Δz_T, 1, 1, :)
+        mask_T = gd.mask_T
+
+        fo = zeros(T, gd.Nx, gd.Ny)
+
+        if Nz_h == nothing
+            Nz_h = detectMLNz(h, coo)
+        end
+
+        for j=1:gd.Ny, i=1:gd.Nx
+
+            if mask_T[i, j] == 0
+                fo[i, j] = fill_value
+            else
+                _Nz = Nz_h[i, j]
+                fo[i, j] = fi[i, j, _Nz]
+            end        
+        end
+        
+        return fo
         
     end
 
