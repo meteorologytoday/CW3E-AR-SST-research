@@ -32,8 +32,8 @@ module SurfaceTendency
         SALT   :: AbstractArray{T, 3},  # T-grid  
         TEMP_r :: AbstractArray{T, 3},  # T-grid  r = right  = future
         SALT_r :: AbstractArray{T, 3},  # T-grid
-        VVEL   :: AbstractArray{T, 3},  # V-grid
         UVEL   :: AbstractArray{T, 3},  # U-grid
+        VVEL   :: AbstractArray{T, 3},  # V-grid
         WVEL   :: AbstractArray{T, 3},  # W-grid
         Fsol   :: Union{AbstractArray{T, 2}, Nothing} = nothing,  # W-grid (Solar radiation input)
         Fnet   :: Union{AbstractArray{T, 2}, Nothing} = nothing,  # W-grid (top-grid heat fluxes)
@@ -58,13 +58,15 @@ module SurfaceTendency
 
         dhdt = (h_r - h_l) / (2*Δt) 
 
+        result = Dict()
+
         # First term : Surface flux
        
         if tracer == "TEMP"
             F0 = Fnet
             Fb = Fsol .* RADFLX_shape.(- h_c)
             
-            TEND_SFCFLX = - (F0 - Fb) ./ (OceanConstants.ρ * OceanConstants.c_p * h_c)
+            result["TEND_SFCFLX"] = - (F0 - Fb) ./ (OceanConstants.ρ * OceanConstants.c_p * h_c)
         else
             throw(ErrorException("Unknown tracer: $tracer"))
         end    
@@ -87,9 +89,25 @@ module SurfaceTendency
 
         ΔX = X_mean - X_b
 
+        # Preparation for velocity
+        UVEL_mean = Operators_ML.sT_ML∫dz_T(
+            UVEL,
+            coo,
+            h = h_c,
+            do_avg = true,
+        )
+        
+        VVEL_mean = Operators_ML.sT_ML∫dz_T(
+            VVEL,
+            coo,
+            h = h_c,
+            do_avg = true,
+        )
+
+
 
         # Second term : Entrainment dhdt
-        TEND_ENT_dhdt = - dhdt ./ h_c .* ΔX
+        result["TEND_ENT_dhdt"] = - dhdt ./ h_c .* ΔX
 
 
         # Thrid term : Entrainment wb
@@ -98,22 +116,24 @@ module SurfaceTendency
             coo,
             h = h_c,
         )
-        TEND_ENT_wb = - wb ./ h_c .* ΔX
+        result["TEND_ENT_wb"] = - wb ./ h_c .* ΔX
         
         # Fourth term : Entrainment due to horizontal adv
         
-        dhdx = Operators.T_interp_U(Operators.U_∂x_T(h, coo_s), coo_s)
-        dhdy = Operators.T_interp_V(Operators.V_∂y_T(h, coo_s), coo_s)
-        hadv = - (UVEL_mean .* dhdx + VVEL_mean .* dhdy)
+        Udhdx = Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(h, coo_s), coo_s)
+        Vdhdy = Operators.T_interp_V( VVEL_mean .* Operators.V_∂x_T(h, coo_s), coo_s)
+        hadv = - (Udhdx + Vdhdy) 
         
-        TEND_ENT_hadv = hadv ./ h_c .* ΔX
+        result["TEND_ENT_hadv"] = hadv ./ h_c .* ΔX
 
 
-        # 
+        # Fifth term : barotropic advection 
+
+        dX_meandx = Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(X, coo_s), coo_s)
+        dX_meandy = Operators.T_interp_V( VVEL_mean .* Operators.U_∂y_T(X, coo_s), coo_s)
+        result["TEND_BT_hadv"] = - (dX_meandx + dX_meandy)
          
-        
-        
-        
+        return result
     end   
 
 

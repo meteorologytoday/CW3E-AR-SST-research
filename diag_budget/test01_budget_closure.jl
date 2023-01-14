@@ -1,127 +1,108 @@
+include("MITgcmTools.jl")
+include("Operators.jl")
+
 using PyCall
 using JLD2
+
+mitgcm = pyimport("MITgcmutils")
 
 ρ   = 1027.5
 c_p = 3994.0
 fill_value = 1e20
 
-include("read_mitgcm_grid.jl")
-include("Operators.jl")
-
-function py2jl(x::AbstractArray)
-
-    dim_len = length(size(x))
-    permute = [dim_len - (i-1) for i=1:dim_len]
-
-    return permutedims(x, permute)
-end
-
-
 println("*** Testing mitgcm ***")
-
-mitgcm = pyimport("MITgcmutils")
 
 #data_dir = "/data/SO2/SWOT/MARA/RUN4_LY_NoRainOct11to18/DIAGS"
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
 grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
 
-coo = readMITgcmGrid_MM(grid_dir, verbose=true)
 
-#iters = 386400
+lat_rng = [31.0, 43.0]
+lon_rng = [230.0, 244.0] #360 .- [130.0, 116.0]
+
+#lat_rng = [0.0, 90.0]
+lat_rng = [35.0, 37.0]
+lon_rng = [238.0, 240.0]
+lev = 1:40
+mitgcm_lev = collect(lev) .- 1
+
+coo_tmp = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true)
+
+lat_idx_rng = MITgcmTools.findArgRange(coo_tmp.gd.ϕ_T[1, :, 1], lat_rng[1], lat_rng[2])
+lon_idx_rng = MITgcmTools.findArgRange(coo_tmp.gd.λ_T[:, 1, 1], lon_rng[1], lon_rng[2])
+
+region        = (lon_idx_rng..., lat_idx_rng...)
+mitgcm_region = (lon_idx_rng[1]-1, lon_idx_rng[2], lat_idx_rng[1]-1, lat_idx_rng[2])
+
+
+println("# region : ", region)
+println("# lev    : ", lev)
+
 iters = 388800
-data_3D = mitgcm.mds.rdmds("$data_dir/diag_Tbdgt", iters) |> py2jl
-data_2D = mitgcm.mds.rdmds("$data_dir/diag_2D", iters) |> py2jl
 
-println("Size of data_3D: ", size(data_3D))
-println("Size of data_2D: ", size(data_2D))
+coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=region)
+data_3D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+data_Tbdgt, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_Tbdgt", iters, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+data_2D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iters, region=mitgcm_region, returnmeta=true))
 
-function nest(a :: AbstractArray{T, 3}, grid::Symbol) where T
+#println("Size of data_3D: ", size(data_3D))
+#println("Size of data_2D: ", size(data_2D))
 
-    Nx, Ny, Nz = size(a)
-
-    newa = nothing
-
-    if grid == :U
-        newa = zeros(T, Nx+1, Ny, Nz)
-        newa[1:Nx, :, :] = a
-    elseif grid == :V
-        newa = zeros(T, Nx, Ny+1, Nz)
-        newa[:, 1:Ny, :] = a
-    elseif grid == :W
-        newa = zeros(T, Nx, Ny, Nz+1)
-        newa[:, :, 1:Nz] = a
-
-    else
-        throw(ErrorException("Unknown grid: $grid"))
-    end
-
-    return newa
-end
 
 println("Loading data...")
 
-ADVr_TH  = nest(data_3D[:, :, :, 1], :W)
-ADVx_TH  = nest(data_3D[:, :, :, 2], :U)
-ADVy_TH  = nest(data_3D[:, :, :, 3], :V)
+d = Dict()
 
-DFrI_TH  = nest(data_3D[:, :, :, 4], :W)
+mapping_grid3D = Dict(
+    "ADVr_TH"  => :W,
+    "ADVx_TH"  => :U,
+    "ADVy_TH"  => :V,
+    "DFrI_TH"  => :W,
+    "TOTTTEND" => :T,
+    "WTHMASS"  => :W,
+    "KPPg_TH"  => :W,
+)
 
-TOTTTEND = data_3D[:, :, :, 5] / 86400.0
+for (varname, grid) in mapping_grid3D
+    
+    _target_data = nothing
 
-WTHMASS  = nest(data_3D[:, :, :, 9], :W)
-KPPg_TH  = nest(data_3D[:, :, :, 10], :W)
+    if haskey(data_3D, varname)
+        _target_data = data_3D        
+    elseif haskey(data_Tbdgt, varname)
+        _target_data = data_Tbdgt
+    else
+        throw(ErrorException("Unknown varname: $varname"))
+    end
+    d[varname] = MITgcmTools.nest3D(_target_data[varname], grid) 
+end
 
-oceQnet = data_2D[:, :,  9]
-oceQnet  = reshape(oceQnet, size(oceQnet)..., 1)
-
-oceQsw  = data_2D[:, :, 10]
-oceQsw  = reshape(oceQsw, size(oceQsw)..., 1)
+for varname in ["oceQnet", "oceQsw"]
+    d[varname] = MITgcmTools.nestSlab(data_2D[varname])
+end
 
 
-
-
-
-#=
-ADVr_TH  = nest(data_3D[:, :, :, 1], :W)
-ADVx_TH  = nest(data_3D[:, :, :, 2], :U)
-ADVy_TH  = nest(data_3D[:, :, :, 3], :V)
-
-DFxE_TH  = nest(data_3D[:, :, :, 4], :U)
-DFyE_TH  = nest(data_3D[:, :, :, 5], :V)
-DFrI_TH  = nest(data_3D[:, :, :, 6], :W)
-
-TOTTTEND = data_3D[:, :, :, 7] / 86400.0
-
-#UVELTH   = data_3D[:, :, :, 6]
-#VVELTH   = data_3D[:, :, :, 7]
-#WVELTH   = data_4D[:, :, :, 8]
-
-WTHMASS  = nest(data_3D[:, :, :, 11], :W)
-KPPg_TH  = nest(data_3D[:, :, :, 12], :W)
-
-oceQsw  = data_2D[:, :, 10]
-oceQsw = reshape(oceQsw, size(oceQsw)..., 1)
-=#
+d["TOTTTEND"] ./= 86400.0
 
 println("Compute Qsw flux...")
 
-Qsw_shape(z) = ( 0.62 * exp.(z/0.6) + (1 - 0.62) * exp.(z/20.0) ) * (z .>= -200.0)
-SWFLX = - oceQsw .* Qsw_shape(coo.gd.z_W)
+Qsw_shape(z) = ( 0.62 * exp.(z/0.6) + (1 - 0.62) * exp.(z/20.0) ) .* (z .>= -200.0)
+d["SWFLX"] = - d["oceQsw"] .* Qsw_shape(coo.gd.z_W)
 
 SFCFLX_shape(z) = z .>= 0
-SFCFLX = - (oceQnet - oceQsw) .* SFCFLX_shape(coo.gd.z_W)
+d["SFCFLX"] = - (d["oceQnet"] - d["oceQsw"]) .* SFCFLX_shape(coo.gd.z_W)
 
 println("Compute tendency...")
 
-TEND_ADV = - (
-        Operators.T_DIVx_U(ADVx_TH, coo)
-    +   Operators.T_DIVy_V(ADVy_TH, coo)
-    +   Operators.T_DIVz_W(ADVr_TH, coo)
+d["TEND_ADV"] = - (
+        Operators.T_DIVx_U(d["ADVx_TH"], coo)
+    +   Operators.T_DIVy_V(d["ADVy_TH"], coo)
+    +   Operators.T_DIVz_W(d["ADVr_TH"], coo)
 )
 
-TEND_DIFF = - (
-       Operators.T_DIVz_W(DFrI_TH, coo)
+d["TEND_DIFF"] = - (
+       Operators.T_DIVz_W(d["DFrI_TH"], coo)
 )
 
 #=
@@ -132,15 +113,17 @@ TEND_DIFF = - (
 )
 =#
 
-TEND_KPP    = - Operators.T_DIVz_W(KPPg_TH, coo)
+d["TEND_KPP"]    = - Operators.T_DIVz_W(d["KPPg_TH"], coo)
 
-TEND_SWFLX  = - Operators.T_DIVz_W(SWFLX, coo; already_weighted=false) / (ρ*c_p)
+d["TEND_SWFLX"]  = - Operators.T_DIVz_W(d["SWFLX"], coo; already_weighted=false) / (ρ*c_p)
 
-TEND_SFCFLX = - Operators.T_DIVz_W(SFCFLX, coo; already_weighted=false) / (ρ*c_p)
+d["TEND_SFCFLX"] = - Operators.T_DIVz_W(d["SFCFLX"], coo; already_weighted=false) / (ρ*c_p)
 
-TEND_SUM = TEND_ADV + TEND_DIFF + TEND_KPP + TEND_SWFLX + TEND_SFCFLX
+d["TEND_SUM"] = d["TEND_ADV"] + d["TEND_DIFF"] + d["TEND_KPP"] + d["TEND_SWFLX"] + d["TEND_SFCFLX"]
 
-TEND_RES = TEND_SUM - TOTTTEND
+d["TEND_RES"] = d["TEND_SUM"] - d["TOTTTEND"]
+
+elm_type = eltype(d["TOTTTEND"])
 
 using NCDatasets
 output_file = "check_budget.nc"
@@ -154,14 +137,14 @@ Dataset(output_file, "c") do ds
     # Define the variables temperature with the attribute units
 
     for (varname, vardata, datatype, dimnames) in [
-        ("TOTTTEND",   TOTTTEND,   eltype(TOTTTEND),   ("lon", "lat", "z")),
-        ("TEND_ADV",   TEND_ADV,   eltype(TEND_ADV),   ("lon", "lat", "z")),
-        ("TEND_DIFF",  TEND_DIFF,  eltype(TEND_DIFF),  ("lon", "lat", "z")),
-        ("TEND_KPP",   TEND_KPP,   eltype(TEND_KPP),   ("lon", "lat", "z")),
-        ("TEND_SWFLX", TEND_SWFLX, eltype(TEND_SWFLX), ("lon", "lat", "z")),
-        ("TEND_SFCFLX",TEND_SFCFLX,eltype(TEND_SFCFLX),("lon", "lat", "z")),
-        ("TEND_SUM",   TEND_SUM,   eltype(TEND_SUM),   ("lon", "lat", "z")),
-        ("TEND_RES",   TEND_RES,   eltype(TEND_RES),   ("lon", "lat", "z")),
+        ("TOTTTEND",   d["TOTTTEND"],   elm_type, ("lon", "lat", "z")),
+        ("TEND_ADV",   d["TEND_ADV"],   elm_type, ("lon", "lat", "z")),
+        ("TEND_DIFF",  d["TEND_DIFF"],  elm_type, ("lon", "lat", "z")),
+        ("TEND_KPP",   d["TEND_KPP"],   elm_type, ("lon", "lat", "z")),
+        ("TEND_SWFLX", d["TEND_SWFLX"], elm_type, ("lon", "lat", "z")),
+        ("TEND_SFCFLX",d["TEND_SFCFLX"],elm_type, ("lon", "lat", "z")),
+        ("TEND_SUM",   d["TEND_SUM"],   elm_type, ("lon", "lat", "z")),
+        ("TEND_RES",   d["TEND_RES"],   elm_type, ("lon", "lat", "z")),
     ]
 
         _var = defVar(ds, varname, datatype, dimnames; fillvalue=fill_value)

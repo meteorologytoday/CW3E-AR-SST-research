@@ -57,6 +57,8 @@ module MITgcmTools
     =#
     function readMITgcmGrid_MM(
         input_dir :: String = ".";
+        region :: Union{Nothing, Tuple} = nothing,
+        lev :: Union{Colon, UnitRange} = Colon(),
         DXG :: String = "DXG",
         DYG :: String = "DYG",
         DXC :: String = "DXC",
@@ -74,7 +76,6 @@ module MITgcmTools
         maskInS :: String = "maskInS",
         maskInW :: String = "maskInW",
         verbose :: Bool = false,
-        lev :: Union{Colon, UnitRange} = Colon(),
     )
 
         m = pyimport("MITgcmutils")
@@ -124,6 +125,22 @@ module MITgcmTools
         c[:RF] = c[:RF][lev_W]
 
 
+        if region != nothing
+            
+            x_rng_T = region[1]:region[2]
+            y_rng_T = region[3]:region[4]
+            
+            for varname in [
+                :XC, :XG, :YC, :YG,
+                :DXC, :DYC, :DXG, :DYG,
+                :maskInC, :maskInS, :maskInW,
+                :RAC,
+            ]
+                c[varname] = c[varname][x_rng_T, y_rng_T]
+            end
+
+
+        end
         Nx, Ny = size(c[:DXG])
         Nz = length(c[:DRF])
         elt = eltype(c[:DXG])
@@ -380,5 +397,63 @@ module MITgcmTools
         return data_dict, itrs, metadata
     end
 
+    function findArgRange(
+        arr :: AbstractArray{T, 1},
+        lb :: T,
+        ub :: T;
+    ) where T
+
+        if lb > ub
+            throw(ErrorException("Lower bound should be no larger than upper bound"))
+        end
+
+
+        if any( (arr[2:end] - arr[1:end-1]) .<= 0 )
+            throw(ErrorException("input array should be monotonically increasing"))
+        end
+
+        idx = lb .<= arr .<= ub
+        
+        idx_low = findfirst(idx)
+        idx_max = findlast(idx)
+
+        return idx_low, idx_max
+    end
+
+    function nest3D(a :: AbstractArray{T, 3}, grid::Symbol) where T
+
+        Nx, Ny, Nz = size(a)
+
+        newa = nothing
+
+        if grid == :T
+            newa = copy(a)
+        elseif grid == :U
+            newa = zeros(T, Nx+1, Ny, Nz)
+            newa[1:Nx, :, :] = a
+        elseif grid == :V
+            newa = zeros(T, Nx, Ny+1, Nz)
+            newa[:, 1:Ny, :] = a
+        elseif grid == :W
+            newa = zeros(T, Nx, Ny, Nz+1)
+            newa[:, :, 1:Nz] = a
+
+        else
+            throw(ErrorException("Unknown grid: $grid"))
+        end
+
+        return newa
+    end
+
+
+    function nestSlab(a :: AbstractArray{T, 2}) where T
+
+        Nx, Ny = size(a)
+
+        newa = zeros(T, size(a)..., 1)
+        newa[:, :, 1] = a
+
+        return newa
+    end
 
 end
