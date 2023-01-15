@@ -4,7 +4,7 @@ module SurfaceFluxes
     ζ_1 = 0.6  # meters
     ζ_2 = 20.0 # meters
     frac_1 = 0.62
-    frac_2 = 1.0 - frac_lw
+    frac_2 = 1.0 - frac_1
     cutoff_depth = 200.0 
 
     SFCFLX_shape(z) = z .>= 0

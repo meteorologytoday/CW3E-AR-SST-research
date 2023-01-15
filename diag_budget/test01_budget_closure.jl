@@ -133,6 +133,7 @@ Dataset(output_file, "c") do ds
     defDim(ds, "lon", coo.gd.Nx)
     defDim(ds, "lat", coo.gd.Ny)
     defDim(ds, "z",   coo.gd.Nz)
+    defDim(ds, "zp1",   coo.gd.Nz+1)
 
     # Define the variables temperature with the attribute units
 
@@ -145,6 +146,8 @@ Dataset(output_file, "c") do ds
         ("TEND_SFCFLX",d["TEND_SFCFLX"],elm_type, ("lon", "lat", "z")),
         ("TEND_SUM",   d["TEND_SUM"],   elm_type, ("lon", "lat", "z")),
         ("TEND_RES",   d["TEND_RES"],   elm_type, ("lon", "lat", "z")),
+        ("VDIFF",      d["DFrI_TH"],   elm_type, ("lon", "lat", "zp1")),
+        ("z",          coo.gd.z_W[1, 1, :], elm_type, ("zp1",)),
     ]
 
         _var = defVar(ds, varname, datatype, dimnames; fillvalue=fill_value)

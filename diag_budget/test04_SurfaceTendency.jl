@@ -1,97 +1,217 @@
-using PyCall
-using JLD2
-
 include("MITgcmTools.jl")
-include("Operators.jl")
-include("Operators_ML.jl")
+include("SurfaceTendency.jl")
 
-function findArgRange(
-    arr :: AbstractArray{T, 1},
-    lb :: T,
-    ub :: T,
+using Formatting
+using NCDatasets
+using PyCall
+mitgcm = pyimport("MITgcmutils")
+
+fill_value = 1e20
+
+function maxarr(
+    a :: AbstractArray{T},
+    b :: AbstractArray{T},
 ) where T
 
-    if lb > ub
-        throw(ErrorException("Lower bound should be no larger than upper bound"))
+    m = zeros(T, size(a)...)
+
+    for i=1:length(a)
+        m[i] = max(a[i], b[i])
     end
 
-
-    if any( (arr[2:end] - arr[1:end-1]) .<= 0 )
-        throw(ErrorException("input array should be monotonically increasing"))
-    end
-
-    idx = lb .<= arr .<= ub
-    
-    idx_low = findfirst(idx)
-    idx_max = findlast(idx)
-
-    return idx_low, idx_max
+    return m
 end
 
 
-println("*** Test SurfaceTendency package ***")
-
-mitgcm = pyimport("MITgcmutils")
+println("*** Testing SurfaceTendency.jl ***")
 
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
 grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
-lat_rng = [31.0, 43.0]
-lon_rng = [230.0, 244.0] #360 .- [130.0, 116.0]
+lat_rng = [35.0, 37.0]
+lon_rng = [230.0, 240.0]
+lev = 1:40
+mitgcm_lev = collect(lev) .- 1
 
 coo_tmp = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true)
 
-lat_idx = findArgRange(coo_tmp.gd.y_T[1, :, 1], lat_rng[1], lat_rng[2])
-lon_idx = findArgRange(coo_tmp.gd.x_T[:, 1, 1], lon_rng[1], lon_rng[2])
+lat_idx_rng = MITgcmTools.findArgRange(coo_tmp.gd.ϕ_T[1, :, 1], lat_rng[1], lat_rng[2])
+lon_idx_rng = MITgcmTools.findArgRange(coo_tmp.gd.λ_T[:, 1, 1], lon_rng[1], lon_rng[2])
 
-mitgcm_region = (lon_idx[1]-1, lon_idx[2], lat_idx[1]-1, lat_idx[2])
-
-coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=mitgcm_region)
-
-#iters = 386400
-iters = 388800
-data_3D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, region=mitgcm_region, lev=collect(lev), returnmeta=true))
-data_2D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iters, region=mitgcm_region, returnmeta=true))
+region        = (lon_idx_rng..., lat_idx_rng...)
+mitgcm_region = (lon_idx_rng[1]-1, lon_idx_rng[2], lat_idx_rng[1]-1, lat_idx_rng[2])
 
 
-println("Varnames of data_3D: ", keys(data_3D))
-println("Varnames of data_2D: ", keys(data_2D))
+println("# region : ", region)
+println("# lev    : ", lev)
+
+model_dt = 150.0
+diter = 576
+beg_iter = 388800
+N = 1
+process_iters = [ beg_iter + (i-1) * diter for i=1:N ]
+
+coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=region)
+coo_s = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=1:1, region=region)
+
+mapping_grid3D = Dict(
+    "TOTTTEND" => :T,
+    "DFrI_TH"  => :W,
+    "THETA"    => :T,
+    "SALT"     => :T,
+    "UVEL"     => :U,
+    "VVEL"     => :V,
+    "WVEL"     => :W,
+)
 
 
+for (i, iter_now) in enumerate(process_iters)
+   
+    println("Iteration $i : $iter_now") 
+    println("Loading data...")
 
 
+    data_3D_c, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    data_Tbdgt_c, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_Tbdgt", iter_now, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
 
 
-println("Loading data...")
+    data_2D_c, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iter_now, region=mitgcm_region, returnmeta=true))
 
-TEMP   = data_3D["THETA"]
-SALT   = data_3D["SALT"]
-KPPhbl = data_2D["KPPhbl"]
 
-MLD, bundle = Operators_ML.detectMLD(TEMP, SALT, coo)
-MLD_compromised = maxarr(MLD, KPPhbl)
+    println("Loading extra timestep")    
+    
+    data_3D_l, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now - diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    data_3D_r, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now + diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    
+    data_2D_l, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iter_now - diter, region=mitgcm_region, returnmeta=true))
+    data_2D_r, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iter_now + diter, region=mitgcm_region, returnmeta=true))
 
-using NCDatasets
-output_file = "output_MLD.nc"
-println("Writing output: $output_file")
-Dataset(output_file, "c") do ds
 
-    defDim(ds, "lon", coo.gd.Nx)
-    defDim(ds, "lat", coo.gd.Ny)
-    defDim(ds, "z",   coo.gd.Nz)
+    d_c = Dict()
+    d_l = Dict()
+    d_r = Dict()
 
-    # Define the variables temperature with the attribute units
+    for varname in ["TOTTTEND", "DFrI_TH"]
+        grid = mapping_grid3D[varname]
+        d_c[varname] = MITgcmTools.nest3D(data_Tbdgt_c[varname], grid) 
+    end
+    d_c["TOTTTEND"] ./= 86400.0
 
-    for (varname, vardata, datatype, dimnames) in [
-        ("z",      coo.gd.z_T[:], eltype(coo.gd.z_T), ("z",)),
-        ("rho",    bundle["ρ"], eltype(bundle["ρ"]), ("lon", "lat", "z",)),
-        ("MLD",    MLD,         eltype(MLD),         ("lon", "lat",)),
-        ("KPPhbl", KPPhbl,      eltype(KPPhbl),      ("lon", "lat",)),
-        ("MLD_compromised", MLD_compromised, eltype(MLD_compromised),  ("lon", "lat",)),
-    ]
+    for varname in ["UVEL", "VVEL", "WVEL"]
+        grid = mapping_grid3D[varname]
+        d_c[varname] = MITgcmTools.nest3D(data_3D_c[varname], grid) 
+    end
 
-        _var = defVar(ds, varname, datatype, dimnames; fillvalue=fill_value)
-        _var[:] = vardata
+    for varname in ["oceQnet", "oceQsw",]
+        d_c[varname] = data_2D_c[varname]
+    end
+
+    for varname in ["THETA", "SALT"]
+        grid = mapping_grid3D[varname]
+        d_c[varname] = MITgcmTools.nest3D(data_3D_c[varname], grid) 
+        d_l[varname] = MITgcmTools.nest3D(data_3D_l[varname], grid) 
+        d_r[varname] = MITgcmTools.nest3D(data_3D_r[varname], grid) 
+    end
+
+    for varname in ["KPPhbl",]
+        d_c[varname] = data_2D_c[varname]
+        d_l[varname] = data_2D_l[varname]
+        d_r[varname] = data_2D_r[varname]
+    end
+
+
+    # determin mixed-layer depth
+    h_l_algo, _ = Operators_ML.detectMLD(d_l["THETA"], d_l["SALT"], coo)
+    h_c_algo, _ = Operators_ML.detectMLD(d_c["THETA"], d_c["SALT"], coo)
+    h_r_algo, _ = Operators_ML.detectMLD(d_r["THETA"], d_r["SALT"], coo)
+    
+    h_l = maxarr(h_l_algo, data_2D_l["KPPhbl"])
+    h_c = maxarr(h_c_algo, data_2D_c["KPPhbl"])
+    h_r = maxarr(h_r_algo, data_2D_r["KPPhbl"])
+
+    #h_l .= 400.0
+    #h_c .= 400.0
+    #h_r .= 400.0
+
+    TOTTTEND_mean = Operators_ML.sT_ML∫dz_T(
+        d_c["TOTTTEND"],
+        coo,
+        h = h_c,
+        do_avg = true,
+    )
+
+    println("Compute SurfaceTendency terms...")
+    terms = SurfaceTendency.computeSurfaceTendencyTerms(;
+        X      = d_c["THETA"],
+        h_l    = h_l,
+        h_c    = h_c,
+        h_r    = h_r,
+        UVEL   = d_c["UVEL"],
+        VVEL   = d_c["VVEL"],
+        WVEL   = d_c["WVEL"],
+        VDIFFFLX = d_c["DFrI_TH"],
+        Fsol   = d_c["oceQsw"],
+        Fnet   = d_c["oceQnet"],
+        Δt     = diter * model_dt,
+        coo    =  coo,
+        coo_s  = coo_s,
+        tracer = "TEMP",
+    )
+
+        
+    terms["TEND_SUM"] = terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"]# + terms["TEND_VDIFF"]
+    terms["TEND_RES"] = terms["TEND_SUM"] - TOTTTEND_mean
+    elm_type = eltype(d_c["THETA"])
+
+
+    DFrI_TH_bot = Operators_ML.evalAtMLD_W(
+        d_c["DFrI_TH"],
+        coo,
+        h = h_c,
+    )
+
+
+    output_file = format("output/diag_{:010d}.nc", iter_now)
+    println("Writing output: $output_file")
+    Dataset(output_file, "c") do ds
+
+        defDim(ds, "lon", coo.gd.Nx)
+        defDim(ds, "lat", coo.gd.Ny)
+        defDim(ds, "z",   coo.gd.Nz)
+        defDim(ds, "z_w", coo.gd.Nz+1)
+        defDim(ds, "time", Inf)
+
+        # Define the variables temperature with the attribute units
+
+        for varname in keys(terms)
+            _var = defVar(ds, varname, elm_type, ("lon", "lat", "time"), fillvalue=fill_value)
+            _var[:, :, 1] = terms[varname]
+        end
+
+        println(coo.gd.z_W[1, 1, :])
+        for (varname, vardata, datatype, dimnames) in [
+            ("z_w",            -coo.gd.z_W[1, 1, :], eltype(coo.gd.z_W), ("z_w", )),
+            ("z",              coo.gd.z_T[1, 1, :], elm_type, ("z", )),
+            ("TOTTTEND_mean",  TOTTTEND_mean,   elm_type, ("lon", "lat",)),
+            ("TOTTTEND",       d_c["TOTTTEND"], elm_type, ("lon", "lat", "z",)),
+            ("THETA",          d_c["THETA"], elm_type, ("lon", "lat", "z",)),
+            ("SALT",           d_c["SALT"], elm_type, ("lon", "lat", "z",)),
+            ("h_c_algo",       h_c_algo, elm_type, ("lon", "lat", )),
+            ("KPPhbl",         d_c["KPPhbl"], elm_type, ("lon", "lat", )),
+            ("DFrI_TH",        d_c["DFrI_TH"], elm_type, ("lon", "lat", "z_w",)),
+            ("DFrI_TH_bot",    DFrI_TH_bot, elm_type, ("lon", "lat",)),
+            ("h_c",            h_c, elm_type, ("lon", "lat",)),
+        ]
+
+            colons = [Colon() for i=1:length(dimnames)]
+
+            dimnames = [dimnames..., "time"]
+
+            _var = defVar(ds, varname, datatype, dimnames; fillvalue=fill_value)
+            _var[colons..., 1] = vardata
+        end
+
     end
 
 end
+

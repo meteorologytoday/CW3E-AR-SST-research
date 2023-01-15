@@ -81,6 +81,8 @@ Dataset(output_file, "c") do ds
     for (varname, vardata, datatype, dimnames) in [
         ("z",      coo.gd.z_T[:], eltype(coo.gd.z_T), ("z",)),
         ("rho",    bundle["ρ"], eltype(bundle["ρ"]), ("lon", "lat", "z",)),
+        ("TEMP",   TEMP,        eltype(TEMP), ("lon", "lat", "z",)),
+        ("SALT",   SALT,        eltype(SALT), ("lon", "lat", "z",)),
         ("MLD",    MLD,         eltype(MLD),         ("lon", "lat",)),
         ("KPPhbl", KPPhbl,      eltype(KPPhbl),      ("lon", "lat",)),
         ("MLD_compromised", MLD_compromised, eltype(MLD_compromised),  ("lon", "lat",)),

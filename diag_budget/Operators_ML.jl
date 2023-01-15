@@ -191,7 +191,7 @@ module Operators_ML
             else
                 _Nz = Nz_h[i, j]
                 _h  = h[i, j]
-                fo[i, j] = fi[i, j, _Nz] + (fi[i, j, _Nz+1] - fi[i, j, _Nz]) * (z_W[_Nz] + h) / Δz_T[_Nz]
+                fo[i, j] = fi[i, j, _Nz] + (fi[i, j, _Nz+1] - fi[i, j, _Nz]) * (z_W[_Nz] + _h) / Δz_T[_Nz]
             end        
         end
         
