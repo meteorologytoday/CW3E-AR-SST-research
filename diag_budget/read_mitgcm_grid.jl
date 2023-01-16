@@ -223,6 +223,8 @@ function readMITgcmGrid_MM(
     # ===== [ Δa ] =====
     Δa_T  = zeros(elt, Nx, Ny, 1)
     Δa_T[:, :, 1] = c[:RAC]
+    
+    Δa_W = copy(Δa_T)
 
     gd = CoordinateModule.Grid(
 
@@ -278,6 +280,7 @@ function readMITgcmGrid_MM(
         Δz_UV = Δz_UV,
 
         Δa_T  = Δa_T,
+        Δa_W  = Δa_W,
     )
 
     return CoordinateModule.Coordinate(gd, gsp)

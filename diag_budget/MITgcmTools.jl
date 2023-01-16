@@ -277,6 +277,8 @@ module MITgcmTools
         Δa_T  = zeros(elt, Nx, Ny, 1)
         Δa_T[:, :, 1] = c[:RAC]
 
+        Δa_W = copy(Δa_T)
+
         gd = CoordinateModule.Grid(
 
             Nx = Nx,
@@ -331,6 +333,7 @@ module MITgcmTools
             Δz_UV = Δz_UV,
 
             Δa_T  = Δa_T,
+            Δa_W  = Δa_W,
         )
 
         return CoordinateModule.Coordinate(gd, gsp)

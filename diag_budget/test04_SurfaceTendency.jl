@@ -25,10 +25,27 @@ end
 
 println("*** Testing SurfaceTendency.jl ***")
 
-data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
+
+
 grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
+model_dt = 150.0
+
+#=
+data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
+N = 24
+diter = 576
+beg_iter = 388800
+=#
+
+data_dir = "/data/SO2/SWOT/MARA/RUN4_LY_NoRainOct11to18/DIAGS"
+N = 744
+diter = 24
+beg_iter = 368688
+
+
 lat_rng = [35.0, 37.0]
+lat_rng = [0.0, 90.0]
 lon_rng = [230.0, 240.0]
 lev = 1:40
 mitgcm_lev = collect(lev) .- 1
@@ -45,10 +62,8 @@ mitgcm_region = (lon_idx_rng[1]-1, lon_idx_rng[2], lat_idx_rng[1]-1, lat_idx_rng
 println("# region : ", region)
 println("# lev    : ", lev)
 
-model_dt = 150.0
-diter = 576
-beg_iter = 388800
-N = 1
+
+
 process_iters = [ beg_iter + (i-1) * diter for i=1:N ]
 
 coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=region)
@@ -57,6 +72,8 @@ coo_s = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=1:1, region=re
 mapping_grid3D = Dict(
     "TOTTTEND" => :T,
     "DFrI_TH"  => :W,
+    "DFxE_TH"  => :U,
+    "DFyE_TH"  => :V,
     "THETA"    => :T,
     "SALT"     => :T,
     "UVEL"     => :U,
@@ -67,7 +84,7 @@ mapping_grid3D = Dict(
 
 for (i, iter_now) in enumerate(process_iters)
    
-    println("Iteration $i : $iter_now") 
+    println("Iteration $i / $N : $iter_now") 
     println("Loading data...")
 
 
@@ -91,11 +108,16 @@ for (i, iter_now) in enumerate(process_iters)
     d_l = Dict()
     d_r = Dict()
 
-    for varname in ["TOTTTEND", "DFrI_TH"]
+    for varname in ["TOTTTEND", "DFrI_TH"]#, "DFxE_TH", "DFyE_TH"]
         grid = mapping_grid3D[varname]
         d_c[varname] = MITgcmTools.nest3D(data_Tbdgt_c[varname], grid) 
     end
     d_c["TOTTTEND"] ./= 86400.0
+    #d_c["DFrI_TH"]  ./= coo.gsp.Δa_T
+    #d_c["DFxE_TH"]  ./= coo.gsp.Δz_T
+    #d_c["DFyE_TH"]  ./= coo.gsp.Δz_T
+    
+    #println("Sum of DFxE_TH: ", sum(d_c["DFxE_TH"]))
 
     for varname in ["UVEL", "VVEL", "WVEL"]
         grid = mapping_grid3D[varname]
@@ -129,11 +151,13 @@ for (i, iter_now) in enumerate(process_iters)
     h_c = maxarr(h_c_algo, data_2D_c["KPPhbl"])
     h_r = maxarr(h_r_algo, data_2D_r["KPPhbl"])
 
+
+
     #h_l .= 400.0
     #h_c .= 400.0
     #h_r .= 400.0
 
-    TOTTTEND_mean = Operators_ML.sT_ML∫dz_T(
+    TOTTTEND_mean = Operators_ML.computeMLMean(
         d_c["TOTTTEND"],
         coo,
         h = h_c,
@@ -149,7 +173,11 @@ for (i, iter_now) in enumerate(process_iters)
         UVEL   = d_c["UVEL"],
         VVEL   = d_c["VVEL"],
         WVEL   = d_c["WVEL"],
-        VDIFFFLX = d_c["DFrI_TH"],
+#        XDIFFFLX = d_c["DFxE_TH"],
+#        YDIFFFLX = d_c["DFyE_TH"],
+        XDIFFFLX = d_c["UVEL"] * 0.0,
+        YDIFFFLX = d_c["VVEL"] * 0.0,
+        ZDIFFFLX = d_c["DFrI_TH"],
         Fsol   = d_c["oceQsw"],
         Fnet   = d_c["oceQnet"],
         Δt     = diter * model_dt,
@@ -159,8 +187,12 @@ for (i, iter_now) in enumerate(process_iters)
     )
 
         
-    terms["TEND_SUM"] = terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"]# + terms["TEND_VDIFF"]
+    terms["TEND_SUM_NOVDIFF"] = terms["TEND_SFCFLX"] + terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"] + terms["TEND_EDDY"] + terms["TEND_HDIFF"] #+ terms["TEND_VDIFF"]
+    terms["TEND_SUM"] = terms["TEND_SFCFLX"] + terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"] + terms["TEND_EDDY"] + terms["TEND_HDIFF"] + terms["TEND_VDIFF"]
+
+    terms["TEND_RES_NOVDIFF"] = terms["TEND_SUM_NOVDIFF"] - TOTTTEND_mean
     terms["TEND_RES"] = terms["TEND_SUM"] - TOTTTEND_mean
+
     elm_type = eltype(d_c["THETA"])
 
 
@@ -198,9 +230,10 @@ for (i, iter_now) in enumerate(process_iters)
             ("SALT",           d_c["SALT"], elm_type, ("lon", "lat", "z",)),
             ("h_c_algo",       h_c_algo, elm_type, ("lon", "lat", )),
             ("KPPhbl",         d_c["KPPhbl"], elm_type, ("lon", "lat", )),
-            ("DFrI_TH",        d_c["DFrI_TH"], elm_type, ("lon", "lat", "z_w",)),
-            ("DFrI_TH_bot",    DFrI_TH_bot, elm_type, ("lon", "lat",)),
+#            ("DFrI_TH",        d_c["DFrI_TH"], elm_type, ("lon", "lat", "z_w",)),
+#            ("DFrI_TH_bot",    DFrI_TH_bot, elm_type, ("lon", "lat",)),
             ("h_c",            h_c, elm_type, ("lon", "lat",)),
+#            ("da",             coo.gsp.Δa_T[:, :, 1], elm_type, ("lon", "lat",)),
         ]
 
             colons = [Colon() for i=1:length(dimnames)]

@@ -21,8 +21,64 @@ module Operators_ML
 
 
     fill_value = 1e20
+    function computeMLMean(
+        fi :: AbstractArray{T, 3},
+        coo :: CoordinateModule.Coordinate;
+        h    :: AbstractArray{T, 2},
+        Nz_h :: Union{AbstractArray{T, 2}, Nothing} = nothing,
+        do_avg :: Bool = false,
+        keep_dim :: Bool = false,
+    ) where T
 
-    function sT_ML∫dz_T(
+        gsp = coo.gsp
+        gd = coo.gd
+        Δz_T = view(gsp.Δz_T, 1, 1, :)
+        z_W = view(coo.gd.z_W, 1, 1, :)
+
+        fo = zeros(T, size(fi)[1:2]...)
+
+        if Nz_h == nothing
+            Nz_h = detectMLNz(h, coo)
+        end
+
+
+        for j=1:size(fi, 2), i=1:size(fi, 1)
+            
+            _tmp = 0.0
+            
+            _Nz = Nz_h[i, j]
+
+            if _Nz > 0
+        
+                for k=1:_Nz-1
+                    _tmp += Δz_T[k] * fi[i, j, k]
+                end
+
+                _tmp += (z_W[_Nz] + h[i, j]) * fi[i, j, _Nz]
+                
+
+                fo[i, j] = _tmp
+
+            end
+
+        end
+
+        if do_avg
+            for j=1:size(fo, 2), i=1:size(fo, 1)
+                fo[i, j] /= h[i, j]
+            end
+        end
+
+
+        if keep_dim
+            fo = reshape(fo, size(fo)..., 1)
+        end
+        
+        return fo
+    end
+
+
+    function sT_ML∫dz_T_ssss(
         fi :: AbstractArray{T, 3},
         coo :: CoordinateModule.Coordinate;
         h    :: AbstractArray{T, 2},
@@ -147,10 +203,10 @@ module Operators_ML
 
         gd = coo.gd
 
-        MLNz = zeros(Int64, gd.Nx, gd.Ny)
+        MLNz = zeros(Int64, size(h)...)
         z_W = view(gd.z_W, 1, 1, :)
        
-        for j=1:gd.Ny, i=1:gd.Nx
+        for j=1:size(h, 2), i=1:size(h, 1)
             
             z = - h[i, j]
             for k=1:gd.Nz
@@ -165,6 +221,7 @@ module Operators_ML
         return MLNz
         
     end
+
     function evalAtMLD_W(
         fi  :: AbstractArray{T, 3},
         coo :: CoordinateModule.Coordinate;

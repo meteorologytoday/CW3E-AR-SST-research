@@ -25,6 +25,7 @@ Base.@kwdef struct GridSpacing
         Δz_UV  :: AbstractArray{Float64, 3}
 
         Δa_T  :: AbstractArray{Float64, 3}
+        Δa_W  :: AbstractArray{Float64, 3}
 
 end
 
