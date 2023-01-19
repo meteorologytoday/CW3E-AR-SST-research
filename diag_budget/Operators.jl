@@ -132,6 +132,7 @@ module Operators
         Δx_V = gsp.Δx_V
         Δa_T = gsp.Δa_T
         Δz_T = gsp.Δz_T
+        Δvol_T = gsp.Δvol_T
         Nx, Ny, Nz = gsp.Nx, gsp.Ny, gsp.Nz
 
 
@@ -160,6 +161,7 @@ module Operators
         Δy_U = gsp.Δy_U
         Δa_T = gsp.Δa_T
         Δz_T = gsp.Δz_T
+        Δvol_T = gsp.Δvol_T
         Nx, Ny, Nz = gsp.Nx, gsp.Ny, gsp.Nz
 
 
@@ -188,6 +190,7 @@ module Operators
         gsp = coo.gsp
         Δa_T = gsp.Δa_T
         Δz_T = gsp.Δz_T
+        Δvol_T = gsp.Δvol_T
         Nx, Ny, Nz = gsp.Nx, gsp.Ny, gsp.Nz
 
 

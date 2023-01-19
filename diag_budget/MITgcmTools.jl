@@ -75,6 +75,7 @@ module MITgcmTools
         maskInC :: String = "maskInC",
         maskInS :: String = "maskInS",
         maskInW :: String = "maskInW",
+        hFacC   :: String = "hFacC",
         verbose :: Bool = false,
     )
 
@@ -100,6 +101,7 @@ module MITgcmTools
             :maskInC => maskInC,
             :maskInS => maskInS,
             :maskInW => maskInW,
+            :hFacC   => hFacC,
         )
             c[varname] = m.mds.rdmds(joinpath(input_dir, loaded_varname))
 
@@ -123,7 +125,7 @@ module MITgcmTools
         c[:DRC] = c[:DRC][lev_T]
         c[:RC] = c[:RC][lev_T]
         c[:RF] = c[:RF][lev_W]
-
+        c[:hFacC] = c[:hFacC][:, :, lev_T]
 
         if region != nothing
             
@@ -139,6 +141,7 @@ module MITgcmTools
                 c[varname] = c[varname][x_rng_T, y_rng_T]
             end
 
+            c[:hFacC] = c[:hFacC][x_rng_T, y_rng_T, :]
 
         end
         Nx, Ny = size(c[:DXG])
@@ -279,6 +282,9 @@ module MITgcmTools
 
         Δa_W = copy(Δa_T)
 
+        hFac_T = c[:hFacC]
+        Δvol_T = Δa_T .* hFac_T
+
         gd = CoordinateModule.Grid(
 
             Nx = Nx,
@@ -334,6 +340,8 @@ module MITgcmTools
 
             Δa_T  = Δa_T,
             Δa_W  = Δa_W,
+
+            Δvol_T = Δvol_T,
         )
 
         return CoordinateModule.Coordinate(gd, gsp)

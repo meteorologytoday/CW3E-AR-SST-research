@@ -1,6 +1,7 @@
 include("MITgcmTools.jl")
 include("Operators.jl")
 
+using Statistics
 using PyCall
 using JLD2
 
@@ -22,8 +23,8 @@ lat_rng = [31.0, 43.0]
 lon_rng = [230.0, 244.0] #360 .- [130.0, 116.0]
 
 #lat_rng = [0.0, 90.0]
-lat_rng = [35.0, 37.0]
-lon_rng = [238.0, 240.0]
+#lat_rng = [35.0, 37.0]
+#lon_rng = [238.0, 240.0]
 lev = 1:40
 mitgcm_lev = collect(lev) .- 1
 
@@ -39,7 +40,8 @@ mitgcm_region = (lon_idx_rng[1]-1, lon_idx_rng[2], lat_idx_rng[1]-1, lat_idx_rng
 println("# region : ", region)
 println("# lev    : ", lev)
 
-iters = 388800
+iters = 142272
+#388800
 
 coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=region)
 data_3D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iters, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
@@ -49,6 +51,10 @@ data_2D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D
 #println("Size of data_3D: ", size(data_3D))
 #println("Size of data_2D: ", size(data_2D))
 
+
+
+println("z_W: ", coo.gd.z_W[:])
+println("Δz_W: ", coo.gsp.Δz_T)
 
 println("Loading data...")
 
@@ -95,23 +101,41 @@ d["SFCFLX"] = - (d["oceQnet"] - d["oceQsw"]) .* SFCFLX_shape(coo.gd.z_W)
 
 println("Compute tendency...")
 
-d["TEND_ADV"] = - (
+d["TEND_ADV_X"] = - (
         Operators.T_DIVx_U(d["ADVx_TH"], coo)
-    +   Operators.T_DIVy_V(d["ADVy_TH"], coo)
-    +   Operators.T_DIVz_W(d["ADVr_TH"], coo)
 )
+
+d["TEND_ADV_Y"] = - (
+       Operators.T_DIVy_V(d["ADVy_TH"], coo)
+)
+
+d["TEND_ADV_Z"] = - (
+       Operators.T_DIVz_W(d["ADVr_TH"], coo)
+)
+
+d["TEND_ADV"] = d["TEND_ADV_X"] + d["TEND_ADV_Y"] + d["TEND_ADV_Z"]
+
 
 d["TEND_DIFF"] = - (
        Operators.T_DIVz_W(d["DFrI_TH"], coo)
 )
 
-#=
-TEND_DIFF = - (
-        Operators.T_DIVx_U(DFxE_TH, coo)
-    +   Operators.T_DIVy_V(DFyE_TH, coo)
-    +   Operators.T_DIVz_W(DFrI_TH, coo)
-)
-=#
+
+global_area = 1.022854491990098E+12
+
+d["WTHMASS_masked"] = d["WTHMASS"] .* SFCFLX_shape(coo.gd.z_W)
+d["TEND_SFC_WTHMASS"] = - Operators.T_DIVz_W(d["WTHMASS_masked"], coo; already_weighted=false)
+
+TEMP_SURF_CORR_MEAN = sum(d["WTHMASS"][:, :, 1:1] .* coo.gsp.Δa_T) / global_area
+println("TEMP_SURF_CORR_MEAN: ", TEMP_SURF_CORR_MEAN)
+
+TEMP_SURF_CORR_MEAN *= 0
+
+d["TEND_SFC_WTHMASS"] = - Operators.T_DIVz_W( d["WTHMASS_masked"] .- TEMP_SURF_CORR_MEAN, coo; already_weighted=false)
+
+println("Global area from summing: ", sum(coo.gsp.Δa_T[:, :, 1]))
+println("Global area from mitGCM STDOUT: ", 1.022854491990098E+12)
+
 
 d["TEND_KPP"]    = - Operators.T_DIVz_W(d["KPPg_TH"], coo)
 
@@ -119,7 +143,7 @@ d["TEND_SWFLX"]  = - Operators.T_DIVz_W(d["SWFLX"], coo; already_weighted=false)
 
 d["TEND_SFCFLX"] = - Operators.T_DIVz_W(d["SFCFLX"], coo; already_weighted=false) / (ρ*c_p)
 
-d["TEND_SUM"] = d["TEND_ADV"] + d["TEND_DIFF"] + d["TEND_KPP"] + d["TEND_SWFLX"] + d["TEND_SFCFLX"]
+d["TEND_SUM"] = d["TEND_ADV_X"] + d["TEND_ADV_Y"] + d["TEND_ADV_Z"] + d["TEND_DIFF"] + d["TEND_SWFLX"] + d["TEND_SFCFLX"] + d["TEND_SFC_WTHMASS"]
 
 d["TEND_RES"] = d["TEND_SUM"] - d["TOTTTEND"]
 
@@ -139,14 +163,20 @@ Dataset(output_file, "c") do ds
 
     for (varname, vardata, datatype, dimnames) in [
         ("TOTTTEND",   d["TOTTTEND"],   elm_type, ("lon", "lat", "z")),
+        ("TEND_ADV_X", d["TEND_ADV_X"], elm_type, ("lon", "lat", "z")),
+        ("TEND_ADV_Y", d["TEND_ADV_Y"], elm_type, ("lon", "lat", "z")),
+        ("TEND_ADV_Z", d["TEND_ADV_Z"], elm_type, ("lon", "lat", "z")),
         ("TEND_ADV",   d["TEND_ADV"],   elm_type, ("lon", "lat", "z")),
         ("TEND_DIFF",  d["TEND_DIFF"],  elm_type, ("lon", "lat", "z")),
         ("TEND_KPP",   d["TEND_KPP"],   elm_type, ("lon", "lat", "z")),
         ("TEND_SWFLX", d["TEND_SWFLX"], elm_type, ("lon", "lat", "z")),
         ("TEND_SFCFLX",d["TEND_SFCFLX"],elm_type, ("lon", "lat", "z")),
+        ("TEND_SFC_WTHMASS",d["TEND_SFC_WTHMASS"],elm_type, ("lon", "lat", "z")),
         ("TEND_SUM",   d["TEND_SUM"],   elm_type, ("lon", "lat", "z")),
         ("TEND_RES",   d["TEND_RES"],   elm_type, ("lon", "lat", "z")),
         ("VDIFF",      d["DFrI_TH"],   elm_type, ("lon", "lat", "zp1")),
+        ("WTHMASS",    d["WTHMASS"],   elm_type, ("lon", "lat", "zp1")),
+        ("WTHMASS_masked", d["WTHMASS_masked"],   elm_type, ("lon", "lat", "zp1")),
         ("z",          coo.gd.z_W[1, 1, :], elm_type, ("zp1",)),
     ]
 

@@ -53,11 +53,6 @@ data_2D, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D
 println("Varnames of data_3D: ", keys(data_3D))
 println("Varnames of data_2D: ", keys(data_2D))
 
-
-
-
-
-
 println("Loading data...")
 
 TEMP   = data_3D["THETA"]

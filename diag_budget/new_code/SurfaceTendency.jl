@@ -31,18 +31,19 @@ module SurfaceTendency
 
 
     function computeSurfaceTendencyTerms(;
-        X_l    :: AbstractArray{T, 3},  # T-grid X is any tracer
-        X_c    :: AbstractArray{T, 3},  # T-grid X is any tracer
-        h_l    :: AbstractArray{T, 2},  # T-grid  l = left   = past
-        h_c    :: AbstractArray{T, 2},  # T-grid  c = center = now
-        h_r    :: AbstractArray{T, 2},  # T-grid  r = right  = future
-        UVEL   :: AbstractArray{T, 3},  # U-grid
-        VVEL   :: AbstractArray{T, 3},  # V-grid
-        WVEL   :: AbstractArray{T, 3},  # W-grid
+        X_p    :: AbstractArray{T, 3},  # T-grid X of the past
+        X_n    :: AbstractArray{T, 3},  # T-grid X of now
+        h_p    :: AbstractArray{T, 2},  # T-grid  p = past
+        h_n    :: AbstractArray{T, 2},  # T-grid  n = now
+        U      :: AbstractArray{T, 3},  # U-grid
+        V      :: AbstractArray{T, 3},  # V-grid
+        W      :: AbstractArray{T, 3},  # W-grid
+        UX     :: AbstractArray{T, 3},  # U-grid
+        VX     :: AbstractArray{T, 3},  # V-grid
+        WX     :: AbstractArray{T, 3},  # W-grid
         XDIFFFLX :: AbstractArray{T, 3},  # U-grid
         YDIFFFLX :: AbstractArray{T, 3},  # V-grid
         ZDIFFFLX :: AbstractArray{T, 3},  # W-grid
-        CORRECTION_SFCFLX :: AbstractArray{T, 2},
         Fsol   :: Union{AbstractArray{T, 2}, Nothing} = nothing,  # W-grid (Solar radiation input)
         Fnet   :: Union{AbstractArray{T, 2}, Nothing} = nothing,  # W-grid (top-grid heat fluxes)
         Δt     :: T,
@@ -58,50 +59,49 @@ module SurfaceTendency
         z_W = view(coo.gd.z_W, 1, 1, :)
         mask_T = coo.gd.mask_T
 
-        h_lc = (h_l + h_c) / 2
-        h_cr = (h_c + h_r) / 2
-
-        X_lc = (X_l + X_c) / 2
-
-        # clear them in case reused
-        h_l = nothing
-        h_c = nothing
-        h_r = nothing
-
+        dhdt = (h_n - h_p) / Δt 
 
         result = Dict()
 
+        # First term : Surface flux
+       
+        if tracer == "TEMP"
+            F0 = Fnet
+            Fb = Fsol .* SurfaceFluxes.RADFLX_shape.(- h_n)
+            
+            result["TEND_SFCFLX"] = (F0 - Fb) ./ (OceanConstants.ρ * OceanConstants.c_p * h_n)
+        else
+            throw(ErrorException("Unknown tracer: $tracer"))
+        end    
 
 
         # Preparation for entrainment 
-        X_mean = Operators_ML.computeMLMean(
-            X_c,
+        X_mean_n = Operators_ML.computeMLMean(
+            X,
             coo,
-            h = h_cr,
+            h = h_n,
             do_avg = true,
             keep_dim = true,
         )
-
-        X_prime = X_c .- X_mean
-
+        X_prime_n = X .- X_mean
 
         X_b = Operators_ML.evalAtMLD_T(
-            X_c,
+            X,
             coo,
-            h = h_cr,
+            h = h_c,
         )
 
-        ΔX = X_mean[:, :, 1] - X_b
+        ΔX = X_mean - X_b
 
         # Preparation for velocity
 
-        h_cr_V = Operators.V_interp_T(reshape(h_cr, size(h_cr)..., 1), coo_s)[:, :, 1]
-        h_cr_U = Operators.U_interp_T(reshape(h_cr, size(h_cr)..., 1), coo_s)[:, :, 1]
+        h_c_V = Operators.V_interp_T(reshape(h_c, size(h_c)..., 1), coo_s)[:, :, 1]
+        h_c_U = Operators.U_interp_T(reshape(h_c, size(h_c)..., 1), coo_s)[:, :, 1]
 
         UVEL_mean = Operators_ML.computeMLMean(
             UVEL,
             coo,
-            h = h_cr_U,
+            h = h_c_U,
             do_avg = true,
             keep_dim = true,
         )
@@ -109,7 +109,7 @@ module SurfaceTendency
         VVEL_mean = Operators_ML.computeMLMean(
             VVEL,
             coo,
-            h = h_cr_V,
+            h = h_c_V,
             do_avg = true,
             keep_dim = true,
         )
@@ -118,97 +118,52 @@ module SurfaceTendency
         UVEL_prime = UVEL .- UVEL_mean
         VVEL_prime = VVEL .- VVEL_mean
 
-        # First term : Surface flux
-       
-        if tracer == "TEMP"
-            F0 = Fsol
-            Fb = Fsol .* SurfaceFluxes.RADFLX_shape.(- h_cr)
-            
-            result["TEND_SW"] = (F0 - Fb) ./ (OceanConstants.ρ * OceanConstants.c_p * h_cr)
-        else
-            throw(ErrorException("Unknown tracer: $tracer"))
-        end    
 
-
-        # Surface grid flux
-        SFCFLX = Fnet - Fsol
-        SFCFLX_b = SFCFLX .* 0
-        result["TEND_SFCFLX"] = (SFCFLX - SFCFLX_b) ./ (OceanConstants.ρ * OceanConstants.c_p * h_cr)
-
-        #=
-        SFCFLX = - reshape(SFCFLX, size(SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
-
-        TEND_SFCFLX_3D = - Operators.T_DIVz_W( 
-            SFCFLX,
-            coo,
-            already_weighted = false,
-        ) ./(OceanConstants.ρ * OceanConstants.c_p) 
-
-        result["TEND_SFCFLX"] = Operators_ML.computeMLMean(
-            TEND_SFCFLX_3D,
-            coo,
-            h = h_cr,
-            do_avg = true,
-        )
-        =#
-
-        # Surface grid correction flux
-
-        #=
-        CORRECTION_SFCFLX = reshape(CORRECTION_SFCFLX, size(CORRECTION_SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
-
-        TEND_CORRECTION_SFCFLX_3D = - Operators.T_DIVz_W( 
-            CORRECTION_SFCFLX,
-            coo,
-            already_weighted = false,
-        )
-        =#
-
-        result["TEND_CORRECTION_SFCFLX"] = - (0 .- CORRECTION_SFCFLX) ./ h_cr
-
-
+        
         # Second term : Entrainment dhdt
-
-        X_mean_lc = Operators_ML.computeMLMean(
-            X_lc,
+        X_mean_p = Operators_ML.computeMLMean(
+            X_p,
             coo,
-            h = h_lc,
+            h = h_p,
             do_avg = true,
         )
 
-        X_mean_cr = Operators_ML.computeMLMean(
-            X_lc,
+        X_mean_n = Operators_ML.computeMLMean(
+            X_p,
             coo,
-            h = h_cr,
+            h = h_n,
             do_avg = true,
         )
 
-        result["TEND_ENT_dhdt"] = ( X_mean_cr - X_mean_lc ) / Δt
+        result["TEND_ENT_dhdt"] = ( X_mean_n - X_mean_p ) / Δt
         
         
         # Thrid term : Entrainment wb
         wb = Operators_ML.evalAtMLD_W(
             WVEL,
             coo,
-            h = h_cr,
+            h = h_c,
         )
-        result["TEND_ENT_wb"] = - wb ./ h_cr .* ΔX
+        result["TEND_ENT_wb"] = - wb ./ h_c .* ΔX
         
         # Fourth term : Entrainment due to horizontal adv
       
-        reshaped_h_cr = reshape(h_cr, size(h_cr)..., 1) 
+        reshaped_h_c = reshape(h_c, size(h_c)..., 1) 
 
-        Udhdx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(reshaped_h_cr, coo_s), coo_s), :, :, 1)
-        Vdhdy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(reshaped_h_cr, coo_s), coo_s), :, :, 1)
+        #Udhdx = UVEL_mean .* Operators.T_interp_U( Operators.U_∂x_T(reshaped_h_c, coo_s), coo_s)[:, :, 1]
+        #Vdhdy = VVEL_mean .* Operators.T_interp_V( Operators.V_∂y_T(reshaped_h_c, coo_s), coo_s)[:, :, 1]
+
+        Udhdx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(reshaped_h_c, coo_s), coo_s), :, :, 1)
+        Vdhdy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(reshaped_h_c, coo_s), coo_s), :, :, 1)
 
         hadv = - (Udhdx + Vdhdy) 
         
-        result["TEND_ENT_hadv"] = hadv ./ h_cr .* ΔX
+        result["TEND_ENT_hadv"] = hadv ./ h_c .* ΔX
 
 
         # Fifth term : barotropic advection 
-        dX_meandx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(X_c, coo_s), coo_s), :, :, 1)
-        dX_meandy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(X_c, coo_s), coo_s), :, :, 1)
+        dX_meandx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(X, coo_s), coo_s), :, :, 1)
+        dX_meandy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(X, coo_s), coo_s), :, :, 1)
         result["TEND_BT_hadv"] = - (dX_meandx + dX_meandy)
 
         # Sixth term: eddy
@@ -220,7 +175,7 @@ module SurfaceTendency
         result["TEND_EDDY"] = Operators_ML.computeMLMean(
             X_eddy,
             coo,
-            h = h_cr,
+            h = h_c,
             do_avg = true,
         )
 
@@ -234,7 +189,7 @@ module SurfaceTendency
         result["TEND_HDIFF"] = Operators_ML.computeMLMean(
             HDIV,
             coo,
-            h = h_cr,
+            h = h_c,
             do_avg = true,
         )
  
@@ -242,12 +197,9 @@ module SurfaceTendency
         result["TEND_VDIFF"] = Operators_ML.evalAtMLD_W(
             ZDIFFFLX,
             coo,
-            h = h_cr,
-        ) ./ coo_s.gsp.Δa_W[:, :, 1] ./ h_cr
-
-
-
-
+            h = h_c,
+        ) ./ coo_s.gsp.Δa_W[:, :, 1] ./ h_c
+         
         return result
     end   
 

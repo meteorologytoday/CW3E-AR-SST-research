@@ -36,9 +36,9 @@ module SurfaceTendency
         h_l    :: AbstractArray{T, 2},  # T-grid  l = left   = past
         h_c    :: AbstractArray{T, 2},  # T-grid  c = center = now
         h_r    :: AbstractArray{T, 2},  # T-grid  r = right  = future
-        UVEL   :: AbstractArray{T, 3},  # U-grid
-        VVEL   :: AbstractArray{T, 3},  # V-grid
-        WVEL   :: AbstractArray{T, 3},  # W-grid
+        XUVEL   :: AbstractArray{T, 3},  # U-grid
+        XVVEL   :: AbstractArray{T, 3},  # V-grid
+        XWVEL   :: AbstractArray{T, 3},  # W-grid
         XDIFFFLX :: AbstractArray{T, 3},  # U-grid
         YDIFFFLX :: AbstractArray{T, 3},  # V-grid
         ZDIFFFLX :: AbstractArray{T, 3},  # W-grid
@@ -93,31 +93,6 @@ module SurfaceTendency
 
         ΔX = X_mean[:, :, 1] - X_b
 
-        # Preparation for velocity
-
-        h_cr_V = Operators.V_interp_T(reshape(h_cr, size(h_cr)..., 1), coo_s)[:, :, 1]
-        h_cr_U = Operators.U_interp_T(reshape(h_cr, size(h_cr)..., 1), coo_s)[:, :, 1]
-
-        UVEL_mean = Operators_ML.computeMLMean(
-            UVEL,
-            coo,
-            h = h_cr_U,
-            do_avg = true,
-            keep_dim = true,
-        )
-        
-        VVEL_mean = Operators_ML.computeMLMean(
-            VVEL,
-            coo,
-            h = h_cr_V,
-            do_avg = true,
-            keep_dim = true,
-        )
-
-        
-        UVEL_prime = UVEL .- UVEL_mean
-        VVEL_prime = VVEL .- VVEL_mean
-
         # First term : Surface flux
        
         if tracer == "TEMP"
@@ -134,35 +109,6 @@ module SurfaceTendency
         SFCFLX = Fnet - Fsol
         SFCFLX_b = SFCFLX .* 0
         result["TEND_SFCFLX"] = (SFCFLX - SFCFLX_b) ./ (OceanConstants.ρ * OceanConstants.c_p * h_cr)
-
-        #=
-        SFCFLX = - reshape(SFCFLX, size(SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
-
-        TEND_SFCFLX_3D = - Operators.T_DIVz_W( 
-            SFCFLX,
-            coo,
-            already_weighted = false,
-        ) ./(OceanConstants.ρ * OceanConstants.c_p) 
-
-        result["TEND_SFCFLX"] = Operators_ML.computeMLMean(
-            TEND_SFCFLX_3D,
-            coo,
-            h = h_cr,
-            do_avg = true,
-        )
-        =#
-
-        # Surface grid correction flux
-
-        #=
-        CORRECTION_SFCFLX = reshape(CORRECTION_SFCFLX, size(CORRECTION_SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
-
-        TEND_CORRECTION_SFCFLX_3D = - Operators.T_DIVz_W( 
-            CORRECTION_SFCFLX,
-            coo,
-            already_weighted = false,
-        )
-        =#
 
         result["TEND_CORRECTION_SFCFLX"] = - (0 .- CORRECTION_SFCFLX) ./ h_cr
 
@@ -184,49 +130,27 @@ module SurfaceTendency
         )
 
         result["TEND_ENT_dhdt"] = ( X_mean_cr - X_mean_lc ) / Δt
-        
-        
-        # Thrid term : Entrainment wb
-        wb = Operators_ML.evalAtMLD_W(
-            WVEL,
-            coo,
-            h = h_cr,
+ 
+
+        # Third term : Convergence
+
+        X_transport = - (
+              Operators.T_DIVx_U(XUVEL, coo; already_weighted=true)
+            + Operators.T_DIVy_V(XVVEL, coo; already_weighted=true)
+            + Operators.T_DIVz_W(XWVEL, coo; already_weighted=true)
         )
-        result["TEND_ENT_wb"] = - wb ./ h_cr .* ΔX
-        
-        # Fourth term : Entrainment due to horizontal adv
-      
-        reshaped_h_cr = reshape(h_cr, size(h_cr)..., 1) 
 
-        Udhdx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(reshaped_h_cr, coo_s), coo_s), :, :, 1)
-        Vdhdy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(reshaped_h_cr, coo_s), coo_s), :, :, 1)
-
-        hadv = - (Udhdx + Vdhdy) 
-        
-        result["TEND_ENT_hadv"] = hadv ./ h_cr .* ΔX
-
-
-        # Fifth term : barotropic advection 
-        dX_meandx = view(Operators.T_interp_U( UVEL_mean .* Operators.U_∂x_T(X_c, coo_s), coo_s), :, :, 1)
-        dX_meandy = view(Operators.T_interp_V( VVEL_mean .* Operators.V_∂y_T(X_c, coo_s), coo_s), :, :, 1)
-        result["TEND_BT_hadv"] = - (dX_meandx + dX_meandy)
-
-        # Sixth term: eddy
-
-        XU_eddy = Operators.T_DIVx_U( Operators.U_interp_T(X_prime, coo) .* UVEL_prime , coo ; already_weighted=false)
-        XV_eddy = Operators.T_DIVy_V( Operators.V_interp_T(X_prime, coo) .* VVEL_prime , coo ; already_weighted=false)
-        X_eddy = - ( XU_eddy + XV_eddy )       
-        
-        result["TEND_EDDY"] = Operators_ML.computeMLMean(
-            X_eddy,
+         result["TEND_TRANSPORT"] = Operators_ML.computeMLMean(
+            X_transport,
             coo,
             h = h_cr,
             do_avg = true,
         )
-
+       
+        
         # Seventh term : Horizontal diffusion
 
-        HDIV = (
+        HDIV = - (
               Operators.T_DIVx_U(XDIFFFLX, coo; already_weighted=true)
             + Operators.T_DIVy_V(YDIFFFLX, coo; already_weighted=true)
         )
@@ -238,17 +162,52 @@ module SurfaceTendency
             do_avg = true,
         )
  
-        # Eighth term : Entrainment wb
+        # Eighth term : Vertical diffusion
         result["TEND_VDIFF"] = Operators_ML.evalAtMLD_W(
             ZDIFFFLX,
             coo,
             h = h_cr,
         ) ./ coo_s.gsp.Δa_W[:, :, 1] ./ h_cr
+        
+        #result["TEND_VDIFF"][.!(isfinite.(result["TEND_VDIFF"]))] .= NaN
 
 
 
+        bundle = Dict()
+        SWFLX = Fsol
+        SWFLX = - reshape(SWFLX, size(SWFLX)..., 1) .* SurfaceFluxes.RADFLX_shape.(coo.gd.z_W)
+        bundle["TEND_SW"] = - Operators.T_DIVz_W(
+            SWFLX,
+            coo,
+            already_weighted = false,
+        ) / (OceanConstants.ρ * OceanConstants.c_p)
 
-        return result
+
+        SFCFLX = Fnet - Fsol
+        SFCFLX = - reshape(SFCFLX, size(SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
+        bundle["TEND_SFCFLX"] = - Operators.T_DIVz_W(
+            SFCFLX,
+            coo,
+            already_weighted = false,
+        ) / (OceanConstants.ρ * OceanConstants.c_p) 
+
+        CORRFLX = reshape(CORRECTION_SFCFLX, size(CORRECTION_SFCFLX)..., 1) .* SurfaceFluxes.SFCFLX_shape.(coo.gd.z_W)
+        bundle["TEND_CORRFLX"] = - Operators.T_DIVz_W(
+            CORRFLX,
+            coo,
+            already_weighted = false,
+        )
+        
+        bundle["TEND_HDIFF"] = HDIV
+        bundle["TEND_VDIFF"] = - Operators.T_DIVz_W(
+            ZDIFFFLX,
+            coo,
+            already_weighted = true,
+        )
+
+        bundle["TEND_TRANSPORT"] = X_transport
+
+        return result, bundle
     end   
 
 

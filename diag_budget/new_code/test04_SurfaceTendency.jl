@@ -32,20 +32,15 @@ grid_dir = "/data/SO2/SWOT/GRID/BIN"
 model_dt = 150.0
 
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
-N = 5
+N = 120
 diter = 576
-#beg_iter = 133632
-beg_iter = 142272
-output_dir = "output_daily_$(N)days"
-mkpath(output_dir)
+beg_iter = 133632
 
 #=
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY_NoRainOct11to18/DIAGS"
 N = 744
 diter = 24
 beg_iter = 368688
-output_dir = "output_mara_hourly_$(N)"
-mkpath(output_dir)
 =#
 
 lat_rng = [35.0, 37.0]
@@ -83,23 +78,12 @@ mapping_grid3D = Dict(
     "UVEL"     => :U,
     "VVEL"     => :V,
     "WVEL"     => :W,
-    "WTHMASS"     => :W,
 )
 
 
 for (i, iter_now) in enumerate(process_iters)
    
     println("Iteration $i / $N : $iter_now") 
-
-    output_file = format("$output_dir/diag_{:010d}.nc", iter_now)
-    println("Target output: $output_file")
-
-    if isfile(output_file)
-        println("File $output_file already exists. Move on to the next..")
-        continue
-    end
-
-
     println("Loading data...")
 
 
@@ -123,12 +107,11 @@ for (i, iter_now) in enumerate(process_iters)
     d_l = Dict()
     d_r = Dict()
 
-    for varname in ["TOTTTEND", "DFrI_TH", "WTHMASS"]#, "DFxE_TH", "DFyE_TH"]
+    for varname in ["TOTTTEND", "DFrI_TH"]#, "DFxE_TH", "DFyE_TH"]
         grid = mapping_grid3D[varname]
         d_c[varname] = MITgcmTools.nest3D(data_Tbdgt_c[varname], grid) 
     end
     d_c["TOTTTEND"] ./= 86400.0
-    #d_c["WTHMASS"] ./= 86400.0
     #d_c["DFrI_TH"]  ./= coo.gsp.Δa_T
     #d_c["DFxE_TH"]  ./= coo.gsp.Δz_T
     #d_c["DFyE_TH"]  ./= coo.gsp.Δz_T
@@ -140,7 +123,7 @@ for (i, iter_now) in enumerate(process_iters)
         d_c[varname] = MITgcmTools.nest3D(data_3D_c[varname], grid) 
     end
 
-    for varname in ["oceQnet", "oceQsw", "oceFWflx", "EXFuwind", "EXFvwind"]
+    for varname in ["oceQnet", "oceQsw",]
         d_c[varname] = data_2D_c[varname]
     end
 
@@ -182,8 +165,7 @@ for (i, iter_now) in enumerate(process_iters)
 
     println("Compute SurfaceTendency terms...")
     terms = SurfaceTendency.computeSurfaceTendencyTerms(;
-        X_l    = d_l["THETA"],
-        X_c    = d_c["THETA"],
+        X      = d_c["THETA"],
         h_l    = h_l,
         h_c    = h_c,
         h_r    = h_r,
@@ -197,7 +179,6 @@ for (i, iter_now) in enumerate(process_iters)
         ZDIFFFLX = d_c["DFrI_TH"],
         Fsol   = d_c["oceQsw"],
         Fnet   = d_c["oceQnet"],
-        CORRECTION_SFCFLX = d_c["WTHMASS"][:, :, 1],
         Δt     = diter * model_dt,
         coo    =  coo,
         coo_s  = coo_s,
@@ -205,20 +186,10 @@ for (i, iter_now) in enumerate(process_iters)
     )
 
         
-    terms["TEND_SUM"] = (
-          terms["TEND_SW"]
-        + terms["TEND_SFCFLX"]
-        + terms["TEND_CORRECTION_SFCFLX"]
-        + terms["TEND_ENT_dhdt"] 
-        + terms["TEND_ENT_wb"] 
-        + terms["TEND_ENT_hadv"] 
-        + terms["TEND_BT_hadv"] 
-        + terms["TEND_EDDY"] 
-        + terms["TEND_HDIFF"] 
-        + terms["TEND_VDIFF"]
-    )
+    terms["TEND_SUM_NOVDIFF"] = terms["TEND_SFCFLX"] + terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"] + terms["TEND_EDDY"] + terms["TEND_HDIFF"] #+ terms["TEND_VDIFF"]
+    terms["TEND_SUM"] = terms["TEND_SFCFLX"] + terms["TEND_ENT_dhdt"] + terms["TEND_ENT_wb"] + terms["TEND_ENT_hadv"] + terms["TEND_BT_hadv"] + terms["TEND_EDDY"] + terms["TEND_HDIFF"] + terms["TEND_VDIFF"]
 
-    #terms["TEND_RES_NOVDIFF"] = terms["TEND_SUM_NOVDIFF"] - TOTTTEND_mean
+    terms["TEND_RES_NOVDIFF"] = terms["TEND_SUM_NOVDIFF"] - TOTTTEND_mean
     terms["TEND_RES"] = terms["TEND_SUM"] - TOTTTEND_mean
 
     elm_type = eltype(d_c["THETA"])
@@ -231,7 +202,7 @@ for (i, iter_now) in enumerate(process_iters)
     )
 
 
-
+    output_file = format("output/diag_{:010d}.nc", iter_now)
     println("Writing output: $output_file")
     Dataset(output_file, "c") do ds
 
@@ -250,21 +221,17 @@ for (i, iter_now) in enumerate(process_iters)
 
         println(coo.gd.z_W[1, 1, :])
         for (varname, vardata, datatype, dimnames) in [
-            ("z_w",            coo.gd.z_W[1, 1, :], elm_type, ("z_w", )),
+            ("z_w",            -coo.gd.z_W[1, 1, :], eltype(coo.gd.z_W), ("z_w", )),
             ("z",              coo.gd.z_T[1, 1, :], elm_type, ("z", )),
-            ("lon",            coo.gd.λ_T[:, 1, 1], elm_type, ("lon", )),
-            ("lat",            coo.gd.ϕ_T[1, :, 1], elm_type, ("lat", )),
             ("TOTTTEND_mean",  TOTTTEND_mean,   elm_type, ("lon", "lat",)),
+            ("TOTTTEND",       d_c["TOTTTEND"], elm_type, ("lon", "lat", "z",)),
             ("THETA",          d_c["THETA"], elm_type, ("lon", "lat", "z",)),
             ("SALT",           d_c["SALT"], elm_type, ("lon", "lat", "z",)),
             ("h_c_algo",       h_c_algo, elm_type, ("lon", "lat", )),
             ("KPPhbl",         d_c["KPPhbl"], elm_type, ("lon", "lat", )),
-            ("h_c",            h_c, elm_type, ("lon", "lat",)),
-            ("oceFWflx",       d_c["oceFWflx"], elm_type, ("lon", "lat",)),
-            ("EXFuwind",       d_c["EXFuwind"], elm_type, ("lon", "lat",)),
-            ("EXFvwind",       d_c["EXFvwind"], elm_type, ("lon", "lat",)),
 #            ("DFrI_TH",        d_c["DFrI_TH"], elm_type, ("lon", "lat", "z_w",)),
 #            ("DFrI_TH_bot",    DFrI_TH_bot, elm_type, ("lon", "lat",)),
+            ("h_c",            h_c, elm_type, ("lon", "lat",)),
 #            ("da",             coo.gsp.Δa_T[:, :, 1], elm_type, ("lon", "lat",)),
         ]
 
