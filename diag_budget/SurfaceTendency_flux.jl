@@ -31,8 +31,7 @@ module SurfaceTendency
 
 
     function computeSurfaceTendencyTerms(;
-        X_l    :: AbstractArray{T, 3},  # T-grid X is any tracer
-        X_c    :: AbstractArray{T, 3},  # T-grid X is any tracer
+        X_lc   :: AbstractArray{T, 3},  # T-grid X is any tracer
         h_l    :: AbstractArray{T, 2},  # T-grid  l = left   = past
         h_c    :: AbstractArray{T, 2},  # T-grid  c = center = now
         h_r    :: AbstractArray{T, 2},  # T-grid  r = right  = future
@@ -61,7 +60,11 @@ module SurfaceTendency
         h_lc = (h_l + h_c) / 2
         h_cr = (h_c + h_r) / 2
 
-        X_lc = (X_l + X_c) / 2
+        h_lc .= - coo.gd.z_W[:, :, 2]
+        h_cr .= - coo.gd.z_W[:, :, 30]
+
+
+        #X_lc = (X_l + X_c) / 2
 
         # clear them in case reused
         h_l = nothing

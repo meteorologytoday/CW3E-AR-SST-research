@@ -48,6 +48,8 @@ module Operators_ML
             
             _Nz = Nz_h[i, j]
 
+            println("i: ", i, ", j: ", j, ":", j, ". _Nz = ", _Nz)
+
             if _Nz > 0
         
                 for k=1:_Nz-1

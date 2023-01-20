@@ -2,6 +2,7 @@
 *.nc
 *.tmp*
 *.swp
+*.swo
 *.grb2
 *.grib2
 *.grb

@@ -31,11 +31,22 @@ grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
 model_dt = 150.0
 
+#=
 data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
 N = 360
 diter = 576
 #beg_iter = 133632
 beg_iter = 142272
+=#
+
+data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/TEST_TFLUX"
+snapshot_data_dir = "/data/SO2/SWOT/MARA/RUN4_LY"
+N = 1
+diter = 576
+beg_iter = 150336
+
+
+
 output_dir = "output_daily_$(N)days_flux"
 mkpath(output_dir)
 
@@ -50,8 +61,8 @@ mkpath(output_dir)
 
 lat_rng = [35.0, 37.0]
 lon_rng = [235.0, 238.0]
-lat_rng = [0.0, 90.0]
-lon_rng = [230.0, 240.0]
+#lat_rng = [0.0, 90.0]
+#lon_rng = [230.0, 240.0]
 
 lev = 1:40
 mitgcm_lev = collect(lev) .- 1
@@ -108,6 +119,10 @@ for (i, iter_now) in enumerate(process_iters)
     println("Loading data...")
 
 
+    snapshot_3D_l, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$snapshot_data_dir/pickup", iter_now - diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    snapshot_3D_r, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$snapshot_data_dir/pickup", iter_now, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+
+
     data_3D_c, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
     data_Tbdgt_c, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_Tbdgt", iter_now, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
 
@@ -117,8 +132,8 @@ for (i, iter_now) in enumerate(process_iters)
 
     println("Loading extra timestep")    
     
-    data_3D_l, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now - diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
-    data_3D_r, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now + diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    data_3D_lc, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now - diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
+    data_3D_cr, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_state", iter_now + diter, region=mitgcm_region, lev=mitgcm_lev, returnmeta=true))
     
     data_2D_l, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iter_now - diter, region=mitgcm_region, returnmeta=true))
     data_2D_r, _, _ = MITgcmTools.postprocessRdmds(mitgcm.mds.rdmds("$data_dir/diag_2D", iter_now + diter, region=mitgcm_region, returnmeta=true))
@@ -127,6 +142,8 @@ for (i, iter_now) in enumerate(process_iters)
     d_c = Dict()
     d_l = Dict()
     d_r = Dict()
+    d_lc = Dict()
+    d_cr = Dict()
 
     for varname in ["TOTTTEND", "DFrI_TH", "WTHMASS"]#, "DFxE_TH", "DFyE_TH"]
         grid = mapping_grid3D[varname]
@@ -141,7 +158,7 @@ for (i, iter_now) in enumerate(process_iters)
         d_c[varname] = MITgcmTools.nest3D(data_Tbdgt_c[varname], grid) 
     end
 
-    for varname in ["oceQnet", "oceQsw", "oceFWflx", "EXFuwind", "EXFvwind"]
+    for varname in ["oceQnet", "oceQsw", "oceFWflx", "EXFuwind", "EXFvwind", "TFLUX"]
         d_c[varname] = data_2D_c[varname]
     end
 
@@ -151,6 +168,13 @@ for (i, iter_now) in enumerate(process_iters)
         d_l[varname] = MITgcmTools.nest3D(data_3D_l[varname], grid) 
         d_r[varname] = MITgcmTools.nest3D(data_3D_r[varname], grid) 
     end
+
+    for varname in ["Theta", "Salt"]
+        grid = mapping_grid3D[varname]
+        d_lc[varname] = MITgcmTools.nest3D(data_3D_lc[varname], grid) 
+        d_cr[varname] = MITgcmTools.nest3D(data_3D_cr[varname], grid) 
+    end
+
 
     for varname in ["KPPhbl",]
         d_c[varname] = data_2D_c[varname]
@@ -169,10 +193,16 @@ for (i, iter_now) in enumerate(process_iters)
     h_r = maxarr(h_r_algo, data_2D_r["KPPhbl"])
 
 
+    #=
+    cutoff_h = - coo.gd.z_T[:, :, 30]
+    h_l .= cutoff_h
+    h_c .= cutoff_h
+    h_r .= cutoff_h
+    =#
 
-    #h_l .= 100.0
-    #h_c .= 100.0
-    #h_r .= 100.0
+    #h_l .= - coo.gd.z_T[:, :, 30]
+    #h_c .= - coo.gd.z_T[:, :, 30]
+    #h_r .= - coo.gd.z_T[:, :, 30]
 
     TOTTTEND_mean = Operators_ML.computeMLMean(
         d_c["TOTTTEND"],
@@ -183,8 +213,8 @@ for (i, iter_now) in enumerate(process_iters)
 
     println("Compute SurfaceTendency terms...")
     terms, bundle = SurfaceTendency.computeSurfaceTendencyTerms(;
-        X_l    = d_l["THETA"],
-        X_c    = d_c["THETA"],
+        X_lc    = d_lc["Theta"],
+#        X_c    = d_c["THETA"],
         h_l    = h_l,
         h_c    = h_c,
         h_r    = h_r,
@@ -195,7 +225,7 @@ for (i, iter_now) in enumerate(process_iters)
         YDIFFFLX = d_c["ADVy_TH"] * 0.0,
         ZDIFFFLX = d_c["DFrI_TH"],
         Fsol   = d_c["oceQsw"],
-        Fnet   = d_c["oceQnet"],
+        Fnet   = d_c["TFLUX"],
         CORRECTION_SFCFLX = d_c["WTHMASS"][:, :, 1],
         Δt     = diter * model_dt,
         coo    =  coo,

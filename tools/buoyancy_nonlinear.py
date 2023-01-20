@@ -25,3 +25,12 @@ def TS2b(T, S):
     )
     return b
 
+def TS2rho(T, S):
+
+    dT = T - T_ref
+    dS = S - S_ref
+    
+    rho = rho_ref * ( 1.0 - TS2b(T, S) / g0 )
+
+    return rho
+

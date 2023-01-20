@@ -8,10 +8,21 @@ alpha_S = 8e-4
 T_ref = 0.0
 S_ref = 35.0
 
+rho_ref = 1e3
+
 def TS2b(T, S):
 
     dT = T - T_ref
     dS = S - S_ref
 
     return g0 * (alpha_T * dT - alpha_S * dS) 
+
+def TS2rho(T, S):
+
+    dT = T - T_ref
+    dS = S - S_ref
+    
+    rho = rho_ref * ( 1.0 - TS2b(T, S) / g0 )
+
+    return rho
 

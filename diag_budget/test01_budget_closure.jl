@@ -14,7 +14,8 @@ fill_value = 1e20
 println("*** Testing mitgcm ***")
 
 #data_dir = "/data/SO2/SWOT/MARA/RUN4_LY_NoRainOct11to18/DIAGS"
-data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
+#data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/DIAGS_DLY"
+data_dir = "/data/SO2/SWOT/MARA/RUN4_LY/TEST_TFLUX/" ; iters=150336;
 grid_dir = "/data/SO2/SWOT/GRID/BIN"
 
 
@@ -40,7 +41,7 @@ mitgcm_region = (lon_idx_rng[1]-1, lon_idx_rng[2], lat_idx_rng[1]-1, lat_idx_rng
 println("# region : ", region)
 println("# lev    : ", lev)
 
-iters = 142272
+#iters = 142272
 #388800
 
 coo = MITgcmTools.readMITgcmGrid_MM(grid_dir, verbose=true, lev=lev, region=region)
@@ -84,7 +85,7 @@ for (varname, grid) in mapping_grid3D
     d[varname] = MITgcmTools.nest3D(_target_data[varname], grid) 
 end
 
-for varname in ["oceQnet", "oceQsw"]
+for varname in ["oceQnet", "oceQsw", "TFLUX"]
     d[varname] = MITgcmTools.nestSlab(data_2D[varname])
 end
 
@@ -97,7 +98,7 @@ Qsw_shape(z) = ( 0.62 * exp.(z/0.6) + (1 - 0.62) * exp.(z/20.0) ) .* (z .>= -200
 d["SWFLX"] = - d["oceQsw"] .* Qsw_shape(coo.gd.z_W)
 
 SFCFLX_shape(z) = z .>= 0
-d["SFCFLX"] = - (d["oceQnet"] - d["oceQsw"]) .* SFCFLX_shape(coo.gd.z_W)
+d["SFCFLX"] = - (d["TFLUX"] - d["oceQsw"]) .* SFCFLX_shape(coo.gd.z_W)
 
 println("Compute tendency...")
 
