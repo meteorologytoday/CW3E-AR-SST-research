@@ -21,7 +21,7 @@ parser.add_argument('--output-dir', type=str, help='Output directory', default="
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
-parser.add_argument('--ocn-dataset', type=str, help='The ocean. Can be `ORA5`, `ORA5-clim`', choices=['ORA5', 'ORA5-clim'], required=True)
+parser.add_argument('--ocn-dataset', type=str, help='The ocean. Can be `ORA5`, `ORA5-clim`', choices=['ORA5', 'ORA5-clim', 'ECCO'], required=True)
 parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
 
 args = parser.parse_args()
@@ -47,9 +47,9 @@ if total_days <= 0:
     raise Exception("No days are avaiable.")
 
 
-
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
 ORA5_varnames = ["MLD", "db", "dT"]
+ECCO_varnames = ["MLD", "dS", "dT"]
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -84,7 +84,6 @@ def magicalExtension(_data):
     #_data['dT']  = _data['T_upper'] - _data['T_lower']
     _data['hdb'] = _data['MLD'] * _data['db']
 
-    #                           shortwave            longwave          sensible            latent
     _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
     _data['net_conv_wv'] = _data['mtpr'] + _data['mer'] + _data['mvimd']
 
@@ -203,60 +202,111 @@ for d, _t in enumerate(t_vec):
 
         #del info
 
-        ############ Loading ORA5 data ############ 
-        # Determine boundaries
-        if _t.day < 15:
-            _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)-1)
-            _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
-        else:
-            _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
-            _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)+1)
-        
-        _t_l = _t_l.replace(day=15)
-        _t_r = _t_r.replace(day=15)
+        ############ Loading ORA5 data ############
 
-        Delta_t_all = _t_r - _t_l
-        Delta_t     = _t - _t_l
+        if args.ocn_dataset in [ "ORA5", "ORA5-clim", ]:
+ 
+            # Determine boundaries
+            if _t.day < 15:
+                _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)-1)
+                _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
+            else:
+                _t_l = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t))
+                _t_r = fmon_tools.fmon2datetime(fmon_tools.datetime2fmon(_t)+1)
+            
+            _t_l = _t_l.replace(day=15)
+            _t_r = _t_r.replace(day=15)
 
-
-        for i, varname in enumerate(ORA5_varnames):
-
-            try:
-
-                load_varname = varname
-                
-                info_l = load_data.getFileAndIndex(args.ocn_dataset, _t_l, root_dir="data", varname=varname, mxl_algo=args.mld)
-                info_r = load_data.getFileAndIndex(args.ocn_dataset, _t_r, root_dir="data", varname=varname, mxl_algo=args.mld)
-                tmp_l = None
-                tmp_r = None
-
-                print("Load file [left]: ", info_l['filename'])
-                with netCDF4.Dataset(info_l['filename'], "r") as ds:
-                    tmp_l = ds.variables[load_varname][info_l['idx'], lat_idx, lon_idx]
-
-                    if ORA5_lat_raw is None:
-                        
-                        ORA5_lat_raw = ds.variables[info_l['varnames']['lat']][:]
-                        ORA5_lon_raw = ds.variables[info_l['varnames']['lon']][:] % 360.0
-
-                        # Compare coordinate
-                        if np.any(np.abs(ORA5_lat_raw - ERA5_lat_raw) > domain_check_tolerance) or np.any(np.abs(ORA5_lon_raw - ERA5_lon_raw) > domain_check_tolerance):
-                            raise Error("Fatal error: ERA5 and ORA5 has different domain")
+            Delta_t_all = _t_r - _t_l
+            Delta_t     = _t - _t_l
 
 
-                print("Load file [right]: ", info_r['filename'])
-                with netCDF4.Dataset(info_r['filename'], "r") as ds:
-                    tmp_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
+            for i, varname in enumerate(ORA5_varnames):
+
+                try:
+
+                    load_varname = varname
                     
+                    info_l = load_data.getFileAndIndex(args.ocn_dataset, _t_l, root_dir="data", varname=varname, mxl_algo=args.mld)
+                    info_r = load_data.getFileAndIndex(args.ocn_dataset, _t_r, root_dir="data", varname=varname, mxl_algo=args.mld)
+                    tmp_l = None
+                    tmp_r = None
 
-                _data[varname] = tmp_l + (tmp_r - tmp_l) * (Delta_t / Delta_t_all)
+                    print("Load file [left]: ", info_l['filename'])
+                    with netCDF4.Dataset(info_l['filename'], "r") as ds:
+                        tmp_l = ds.variables[load_varname][info_l['idx'], lat_idx, lon_idx]
+
+                        if ORA5_lat_raw is None:
+                            
+                            ORA5_lat_raw = ds.variables[info_l['varnames']['lat']][:]
+                            ORA5_lon_raw = ds.variables[info_l['varnames']['lon']][:] % 360.0
+
+                            # Compare coordinate
+                            if np.any(np.abs(ORA5_lat_raw - ERA5_lat_raw) > domain_check_tolerance) or np.any(np.abs(ORA5_lon_raw - ERA5_lon_raw) > domain_check_tolerance):
+                                raise Error("Fatal error: ERA5 and ORA5 has different domain")
+
+
+                    print("Load file [right]: ", info_r['filename'])
+                    with netCDF4.Dataset(info_r['filename'], "r") as ds:
+                        tmp_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
+                        
+
+                    _data[varname] = tmp_l + (tmp_r - tmp_l) * (Delta_t / Delta_t_all)
+
+                except Exception as e:
+
+                    print(traceback.format_exc()) 
+                    print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+
+                    raise e
+
+
+            elif args.ocn_dataset == "ECCO":
+
+
+                for varname in [""]
+                info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname)
+
+                print("Load `%s` from file: %s" % ( varname, info['filename'] ))
+
+
+                with netCDF4.Dataset(info['filename'], "r") as ds:
+                    
+                    if ERA5_lat_raw is None:
+                       
+                        print("Coordinate loading...") 
+                        ERA5_lat_raw = ds.variables[info['varnames']['lat']][:]
+                        ERA5_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
+
+                        lat_rng = np.array(args.lat_rng)
+                        lon_rng = np.array(args.lon_rng) % 360
+                        
+                        lat_idx, lon_idx, wgt = domain_tools.detectIndexRange(ERA5_lat_raw, ERA5_lon_raw, lat_rng, lon_rng)
+
+                        lat = ERA5_lat_raw[lat_idx]
+                        lon = ERA5_lon_raw[lon_idx]
+                        wgt = np.cos(lat * np.pi / 180)
+
+                        mask = mask[lat_idx, :][:, lon_idx]
+
+                        print("Shape of mask: ", mask.shape)
+
+                        f_co = 2 * ec.Omega * np.sin(np.pi / 180 * lat)
+
+
+                    _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
 
             except Exception as e:
 
                 print(traceback.format_exc()) 
                 print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
-                raise e
+                I_have_all_data_for_today = False
+
+
+
+                
+                
 
 
         data_good[d] = I_have_all_data_for_today

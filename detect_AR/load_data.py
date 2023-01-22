@@ -54,6 +54,19 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
         lat = "lat"
         lon = "lon"
 
+    elif product == "ECCO":
+
+        if varname in ["SST", "MLT", "SSS", "MLS", "MLD",] :
+            filename = "ECCO_mixedlayer_0p50deg_%s.nc" % (date.strftime("%Y-%m-%d"),)
+        else:
+            raise Exception("Unrecognized varname: %s " % (varname,) )
+
+        filename = os.path.join(root_dir, "ECCO", "processed_0p25deg", filename)
+
+        idx = 0
+        lat = "lat"
+        lon = "lon"
+ 
     elif product == "ORA5":
 
         timestr = date.strftime("%Y-%m")

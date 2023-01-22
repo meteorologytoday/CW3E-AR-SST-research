@@ -12,6 +12,9 @@ def pleaseRun(cmd):
 beg_time = datetime.datetime(1990,    9, 30)
 end_time = datetime.datetime(2022,   12, 31)
 
+#beg_time = datetime.datetime(2000,    9, 30)
+#end_time = datetime.datetime(2002,   12, 31)
+
 
 
 
