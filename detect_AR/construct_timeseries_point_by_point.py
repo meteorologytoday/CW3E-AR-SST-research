@@ -49,7 +49,7 @@ if total_days <= 0:
 
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
 ORA5_varnames = ["MLD", "db", "dT"]
-ECCO_varnames = ["MLD", "dS", "dT"]
+ECCO_varnames = ["MLD", "dS", "dT", "db"]
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -59,6 +59,9 @@ ERA5_lat_raw = None
 ERA5_lon_raw = None
 ORA5_lat_raw = None
 ORA5_lon_raw = None
+ECCO_lat_raw = None
+ECCO_lon_raw = None
+
 lat_idx = None
 lon_idx = None
 
@@ -70,7 +73,7 @@ f_co = None
 computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'dTdt_Ekman', 'w_Ekman']
 
 ts = { varname : np.zeros((total_days,), dtype=np.float32) 
-    for varname in (ERA5_varnames + ORA5_varnames + computed_vars) 
+    for varname in (ERA5_varnames + ECCO_varnames + computed_vars) 
 }
 
 data_good = np.zeros((total_days,), dtype=bool)
@@ -81,7 +84,6 @@ def magicalExtension(_data):
     #_data["MLD"] *= 2
 
     _data['U']   = np.sqrt(_data['u10']**2 + _data['v10']**2)
-    #_data['dT']  = _data['T_upper'] - _data['T_lower']
     _data['hdb'] = _data['MLD'] * _data['db']
 
     _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
@@ -103,7 +105,7 @@ def magicalExtension(_data):
     _data['w_Ekman']  = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
     _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT'] / _data['MLD']
 
-    _data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
+    #_data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
  
 
 with netCDF4.Dataset(args.mask, "r") as ds:
@@ -261,52 +263,40 @@ for d, _t in enumerate(t_vec):
                     raise e
 
 
-            elif args.ocn_dataset == "ECCO":
+        elif args.ocn_dataset == "ECCO":
 
 
-                for varname in [""]
-                info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname)
+            try:
 
-                print("Load `%s` from file: %s" % ( varname, info['filename'] ))
+                for varname in ECCO_varnames:
 
+                    info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname)
+                    print("Load `%s` from file: %s" % ( varname, info['filename'] ))
 
-                with netCDF4.Dataset(info['filename'], "r") as ds:
-                    
-                    if ERA5_lat_raw is None:
-                       
-                        print("Coordinate loading...") 
-                        ERA5_lat_raw = ds.variables[info['varnames']['lat']][:]
-                        ERA5_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
-
-                        lat_rng = np.array(args.lat_rng)
-                        lon_rng = np.array(args.lon_rng) % 360
-                        
-                        lat_idx, lon_idx, wgt = domain_tools.detectIndexRange(ERA5_lat_raw, ERA5_lon_raw, lat_rng, lon_rng)
-
-                        lat = ERA5_lat_raw[lat_idx]
-                        lon = ERA5_lon_raw[lon_idx]
-                        wgt = np.cos(lat * np.pi / 180)
-
-                        mask = mask[lat_idx, :][:, lon_idx]
-
-                        print("Shape of mask: ", mask.shape)
-
-                        f_co = 2 * ec.Omega * np.sin(np.pi / 180 * lat)
-
-
-                    _data[load_varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
+                    with netCDF4.Dataset(info['filename'], "r") as ds:
+ 
+                        if ECCO_lat_raw is None:
+                            
+                            ECCO_lat_raw = ds.variables[info['varnames']['lat']][:]
+                            ECCO_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
+                            
+                            # Compare coordinate
+                            if np.any(np.abs(ECCO_lat_raw - ECCO_lat_raw) > domain_check_tolerance) or np.any(np.abs(ECCO_lon_raw - ECCO_lon_raw) > domain_check_tolerance):
+                                raise Error("Fatal error: ERA5 and ECCO has different domain")
+    
+                        _data[varname] = ds.variables[varname][info['idx'], lat_idx, lon_idx]
 
             except Exception as e:
 
                 print(traceback.format_exc()) 
-                print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+                print("ECCO: Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
                 I_have_all_data_for_today = False
 
 
 
-                
-                
+            
+            
 
 
         data_good[d] = I_have_all_data_for_today

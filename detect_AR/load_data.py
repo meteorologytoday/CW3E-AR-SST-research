@@ -56,7 +56,7 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
 
     elif product == "ECCO":
 
-        if varname in ["SST", "MLT", "SSS", "MLS", "MLD",] :
+        if varname in ["SST", "MLT", "SSS", "MLS", "MLD", "dS", "dT", "db"] :
             filename = "ECCO_mixedlayer_0p50deg_%s.nc" % (date.strftime("%Y-%m-%d"),)
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )

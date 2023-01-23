@@ -122,23 +122,21 @@ d["TEND_DIFF"] = - (
 )
 
 
-global_area = 1.022854491990098E+12
+
 
 d["WTHMASS_masked"] = d["WTHMASS"] .* SFCFLX_shape(coo.gd.z_W)
 d["TEND_SFC_WTHMASS"] = - Operators.T_DIVz_W(d["WTHMASS_masked"], coo; already_weighted=false)
 
-TEMP_SURF_CORR_MEAN = sum(d["WTHMASS"][:, :, 1:1] .* coo.gsp.Δa_T) / global_area
-println("TEMP_SURF_CORR_MEAN: ", TEMP_SURF_CORR_MEAN)
+#global_area = 1.022854491990098E+12
+#TEMP_SURF_CORR_MEAN = sum(d["WTHMASS"][:, :, 1:1] .* coo.gsp.Δa_T) / global_area
+#println("TEMP_SURF_CORR_MEAN: ", TEMP_SURF_CORR_MEAN)
+#TEMP_SURF_CORR_MEAN *= 0
+#println("Global area from summing: ", sum(coo.gsp.Δa_T[:, :, 1]))
+#println("Global area from mitGCM STDOUT: ", 1.022854491990098E+12)
 
-TEMP_SURF_CORR_MEAN *= 0
+d["TEND_SFC_WTHMASS"] = - Operators.T_DIVz_W( d["WTHMASS_masked"], coo; already_weighted=false)
 
-d["TEND_SFC_WTHMASS"] = - Operators.T_DIVz_W( d["WTHMASS_masked"] .- TEMP_SURF_CORR_MEAN, coo; already_weighted=false)
-
-println("Global area from summing: ", sum(coo.gsp.Δa_T[:, :, 1]))
-println("Global area from mitGCM STDOUT: ", 1.022854491990098E+12)
-
-
-d["TEND_KPP"]    = - Operators.T_DIVz_W(d["KPPg_TH"], coo)
+#d["TEND_KPP"]    = - Operators.T_DIVz_W(d["KPPg_TH"], coo)
 
 d["TEND_SWFLX"]  = - Operators.T_DIVz_W(d["SWFLX"], coo; already_weighted=false) / (ρ*c_p)
 
@@ -169,12 +167,12 @@ Dataset(output_file, "c") do ds
         ("TEND_ADV_Z", d["TEND_ADV_Z"], elm_type, ("lon", "lat", "z")),
         ("TEND_ADV",   d["TEND_ADV"],   elm_type, ("lon", "lat", "z")),
         ("TEND_DIFF",  d["TEND_DIFF"],  elm_type, ("lon", "lat", "z")),
-        ("TEND_KPP",   d["TEND_KPP"],   elm_type, ("lon", "lat", "z")),
         ("TEND_SWFLX", d["TEND_SWFLX"], elm_type, ("lon", "lat", "z")),
         ("TEND_SFCFLX",d["TEND_SFCFLX"],elm_type, ("lon", "lat", "z")),
         ("TEND_SFC_WTHMASS",d["TEND_SFC_WTHMASS"],elm_type, ("lon", "lat", "z")),
         ("TEND_SUM",   d["TEND_SUM"],   elm_type, ("lon", "lat", "z")),
         ("TEND_RES",   d["TEND_RES"],   elm_type, ("lon", "lat", "z")),
+#        ("TEND_KPP",   d["TEND_KPP"],   elm_type, ("lon", "lat", "z")),
         ("VDIFF",      d["DFrI_TH"],   elm_type, ("lon", "lat", "zp1")),
         ("WTHMASS",    d["WTHMASS"],   elm_type, ("lon", "lat", "zp1")),
         ("WTHMASS_masked", d["WTHMASS_masked"],   elm_type, ("lon", "lat", "zp1")),

@@ -3,12 +3,13 @@
 . pretty_latlon.sh
 
 
-ocn_dataset="ORA5-clim"
+#ocn_dataset="ORA5-clim"
+ocn_dataset="ECCO"
         
-output_root=output_${ocn_dataset}
+output_root=output_ECCO_${ocn_dataset}
 
 beg_year=2001
-end_year=2021
+end_year=2002
 
 
 
@@ -22,20 +23,23 @@ spatial_rngs=(
 
 AR_dt_rngs=(
     0 50
+    3 50
 )
 
 # Testing
 
 #if [ ] ; then
-beg_year=2001
-end_year=2021
+beg_year=1998
+end_year=2017
 
 spatial_rngs=(
+    30 50 -160 -130
     31 43 230 244
 )
 
 AR_dt_rngs=(
-   0 50
+   3 50
+   5 50
 )
 #fi
 
