@@ -110,11 +110,14 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evt['U']   = np.mean(data['ttl']['U'][ind])
     AR_evt['MLD']   = np.mean(data['ttl']['MLD'][ind])
     
+    AR_evt['u10']   = np.mean(data['ttl']['u10'][ind])
+    AR_evt['v10']   = np.mean(data['ttl']['v10'][ind])
+    
     AR_evt['net_sfc_hf']   = np.mean(data['ttl']['net_sfc_hf'][ind])
     AR_evt['net_conv_wv']   = np.mean(data['ttl']['net_conv_wv'][ind])
 
     
-    AR_evt['dTdt_sfchf'] = AR_evt['net_sfc_hf'] / (3996*1026 * AR_evt['MLD'])
+    AR_evt['dTdt_sfchf'] = np.mean(data['ttl']['dTdt_sfchf'][ind]) #AR_evt['net_sfc_hf'] / (3996*1026 * AR_evt['MLD'])
     AR_evt['dTdt_no_sfchf'] = AR_evt['dTdt'] - AR_evt['dTdt_sfchf']
     AR_evt['dTdt_ratio_from_sfchf']    = AR_evt['dTdt_sfchf'] / AR_evt['dTdt']
     AR_evt['dTdt_ratio_from_no_sfchf'] = 1.0 - AR_evt['dTdt_ratio_from_sfchf'] 
@@ -284,12 +287,17 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
     print("Number of data points: %d" % (len(X),))
 
-
+"""
 plot_data = [
     ('dTdt', 'dTdt_sfchf'),    ('dTdt_sfchf', 'dTdt_no_sfchf'), ('U',           'dTdt_no_sfchf'), ('MLD', 'dTdt_no_sfchf'), 
     ('dTdt', 'dTdt_no_sfchf'), ('DeltaOnlyU', 'dTdt_no_sfchf'), ('dSST_deepen', 'dTdt_no_sfchf'), None
 ]
+"""
 
+plot_data = [
+    ('dTdt', 'dTdt_sfchf'),    ('U',   'dTdt_sfchf'),    None,
+    ('dTdt', 'dTdt_no_sfchf'), ('u10', 'dTdt_no_sfchf'), ('v10', 'dTdt_no_sfchf'),
+]
 
 rows = 2
 

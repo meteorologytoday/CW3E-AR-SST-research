@@ -94,11 +94,18 @@ for k, t_seg in enumerate(AR_t_segs):
     AR_evt['month'] = mid_time.month
     AR_evt['year'] = mid_time.year + 1 if within(mid_time.month, 10, 12) else mid_time.year
     AR_evt['watertime'] = watertime_tools.getWatertime(datetime.fromtimestamp(AR_evt['mid_time']))
+    AR_evt['wateryear'] = np.floor(AR_evt['watertime'])
+    AR_evt['waterdate'] = AR_evt['watertime'] - AR_evt['wateryear']
     
     AR_evt['vort10']   = np.mean(data['ttl']['vort10'][ind])
     AR_evt['curltau']   = np.mean(data['ttl']['curltau'][ind])
     AR_evt['U']   = np.mean(data['ttl']['U'][ind])
     AR_evt['MLD']   = np.mean(data['ttl']['MLD'][ind])
+    
+    AR_evt['u10']   = np.mean(data['ttl']['u10'][ind])
+    AR_evt['v10']   = np.mean(data['ttl']['v10'][ind])
+    
+    AR_evt['U_mean']   = (AR_evt['u10']**2 + AR_evt['v10']**2)**0.5
     
     AR_evt['net_sfc_hf']   = np.mean(data['ttl']['net_sfc_hf'][ind])
     AR_evt['net_conv_wv']   = np.mean(data['ttl']['net_conv_wv'][ind])
@@ -201,10 +208,11 @@ if args.no_display is False:
     mpl.use('TkAgg')
 else:
     mpl.use('Agg')
+    mpl.rc('font', size=20)
+    mpl.rc('axes', labelsize=15)
+     
  
-mpl.rc('font', size=20)
-mpl.rc('axes', labelsize=15)
-   
+  
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.patches import Rectangle
@@ -263,10 +271,27 @@ var_infos = {
         'unit' : "$ \\mathrm{m}$",
     },
 
-
-
     'U' : {
         'var'  : "$\\left|\\vec{U}_{10}\\right|$",
+        'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
+    },
+
+
+    'U_mean' : {
+        'var'  : "$\\left|\\vec{U}_{10}\\right|_{\\mathrm{mean}}$",
+        'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
+    },
+
+
+    'u10' : {
+        'var'  : "$u_{10}$",
+        'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
+    },
+
+
+
+    'v10' : {
+        'var'  : "$v_{10}$",
         'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
     },
 
@@ -319,10 +344,16 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
     print("Number of data points: %d" % (len(X),))
 
-
+"""
 plot_data = [
     ('dTdt', 'dTdt_sfchf'),    ('curltau',    'dTdt_no_sfchf'),       ('U',           'dTdt_no_sfchf'), ('MLD', 'dTdt_no_sfchf'), 
     ('dTdt', 'dTdt_no_sfchf'), ('dTdt_Ekman', 'dTdt_no_sfchf'), ('dTdt_deepen', 'dTdt_no_sfchf'), 
+]
+"""
+
+plot_data = [
+    ('u10', 'dTdt_sfchf'),    ('v10', 'dTdt_sfchf'),    ('U', 'dTdt_sfchf'),    ('u10', 'v10'),
+    ('u10', 'dTdt_no_sfchf'), ('v10', 'dTdt_no_sfchf'), ('U', 'dTdt_no_sfchf'), ('U', 'U_mean'),
 ]
 
 
@@ -353,7 +384,16 @@ color_info = {
         'bnd'   : [0, 6],
     },
 
-}['watertime']
+    'waterdate': {
+        'cmap' : 'rainbow',
+        'varname'  : 'waterdate', 
+        'factor'   : 12.0,  # 6 months
+        'label' : "Watertime [ mon ]",
+        'bnd'   : [0, 6],
+    },
+
+
+}['AR_duration']#waterdate']
 
 fig, ax = plt.subplots(rows, cols, figsize=(6*cols, 5*rows), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4))
 
@@ -399,8 +439,8 @@ for i, _ax in enumerate(ax_flat):
     if i > len(plot_data)-1 or plot_data[i] is None: 
         fig.delaxes(_ax)
 
-
 if not args.no_display:
+    print("Show figure")
     plt.show()
 
 if args.output != "":

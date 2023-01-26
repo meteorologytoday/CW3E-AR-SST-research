@@ -50,8 +50,7 @@ def glue(t_segs, glue_threshold):
 
     new_t_seg[1] = t_segs[-1][1]
     new_t_segs.append(new_t_seg)
-    #print(t_segs)
-    #print(new_t_segs)
+    
     return new_t_segs
 
 def detectAbove(_t, x, x_threshold, glue_threshold=0):

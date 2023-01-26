@@ -8,10 +8,8 @@ ocn_dataset="ECCO"
         
 output_root=output_ECCO_${ocn_dataset}
 
-beg_year=2001
-end_year=2002
-
-
+beg_year=1998
+end_year=2017
 
 spatial_rngs=(
     30 50 -160 -130
@@ -19,21 +17,6 @@ spatial_rngs=(
     30 40 -145 -130
     40 50 -160 -145
     40 50 -145 -130
-)
-
-AR_dt_rngs=(
-    0 50
-    3 50
-)
-
-# Testing
-
-#if [ ] ; then
-beg_year=1998
-end_year=2017
-
-spatial_rngs=(
-    30 50 -160 -130
     31 43 230 244
 )
 
@@ -42,6 +25,14 @@ AR_dt_rngs=(
    5 50
 )
 #fi
+
+spatial_rngs=(
+    30 50 -160 -130
+)
+
+AR_dt_rngs=(
+  3 50
+)
 
 mask_file="ERA5_mask.nc"
 if [ ! -f "$mask_file" ]; then
@@ -121,7 +112,7 @@ for mld in somxl030  ; do
             output_AR_evts_database=$output_dir/AR_evts.csv
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --IVT-threshold 250.0 --output-database $output_AR_evts_database --no-display
+            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --IVT-threshold 250.0 --output-database $output_AR_evts_database # --no-display 
 
         done
 

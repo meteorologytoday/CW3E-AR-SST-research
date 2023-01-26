@@ -41,7 +41,11 @@ def decomposeClimAnom(ts, xs):
         d = t.day
 
         if m == 2 and d == 29:
-            xa[i] = np.nan
+
+            if i > 0 and i < (len(ts) - 1):
+                xa[i] = (xa[i-1] + xa[i+1]) / 2.0
+            else:
+                xa[i] = np.nan
         
         else:
             doy = doy_noleap(t)
