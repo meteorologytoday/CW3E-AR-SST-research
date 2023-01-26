@@ -12,6 +12,8 @@ def magicalExtension(_data):
 
     _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
     _data['pme'] = _data['mtpr'] + _data['mer']
+    _data['U']   = np.sqrt(_data['u10']**2 + _data['v10']**2)
+    _data['ao_T_diff']   = _data["t2m"] - _data["sst"] 
 
 
 parser = argparse.ArgumentParser(
@@ -51,16 +53,22 @@ if total_days <= 0:
 
 ERA5_varnames = ["dTdt", "IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
 
+ECCO_varnames = ["MLD", "dT", "dS", "db", ]
 
-extended_varnames = ["net_sfc_hf", "pme"]
 
-all_varnames = ERA5_varnames + extended_varnames
+extended_varnames = ["net_sfc_hf", "pme", "U", "ao_T_diff"]
+
+all_varnames = ERA5_varnames + ECCO_varnames + extended_varnames
 
 
 ignored_months = [4, 5, 6, 7, 8, 9]
 
 ERA5_lat_raw = None
 ERA5_lon_raw = None
+
+ECCO_lat_raw = None
+ECCO_lon_raw = None
+domain_check_tolerance = 1e-10
 
 lat_idx = None
 lon_idx = None
@@ -87,7 +95,6 @@ for k, cnt_boxes_setting in enumerate(cnt_boxes_settings):
         'name' : cnt_boxes_setting[0],
         'wd_beg' : watertime_tools.getWaterday(datetime(1, cnt_boxes_setting[1][0], cnt_boxes_setting[1][1]), no_leap=True),
         'wd_end' : watertime_tools.getWaterday(datetime(1, cnt_boxes_setting[2][0], cnt_boxes_setting[2][1]), no_leap=True),
-        'total_cnt': 0,
     })
 
 
@@ -143,9 +150,10 @@ for d, _t in enumerate(t_vec):
                     for varname in all_varnames:
 
                         data[varname] = {
-                            'cnt' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
-                            'avg' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
-                            'std' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'cnt_ttl' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'cnt'     : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'avg'     : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'std'     : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
                         }
 
                 
@@ -202,13 +210,33 @@ for d, _t in enumerate(t_vec):
                 raise Exception("Fail to load the day: %s" % (str(_t),))
 
 
+        # Load ECCO data
+        for i, varname in enumerate(ECCO_varnames):
+
+            info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname)
+            print("Load `%s` from file: %s" % ( varname, info['filename'] ))
+
+            with netCDF4.Dataset(info['filename'], "r") as ds:
+
+                if ECCO_lat_raw is None:
+                    
+                    ECCO_lat_raw = ds.variables[info['varnames']['lat']][:]
+                    ECCO_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
+                    
+                    # Compare coordinate
+                    if np.any(np.abs(ECCO_lat_raw - ECCO_lat_raw) > domain_check_tolerance) or np.any(np.abs(ECCO_lon_raw - ECCO_lon_raw) > domain_check_tolerance):
+                        raise Error("Fatal error: ERA5 and ECCO has different domain")
+
+                tmp[varname] = ds.variables[varname][info['idx'], lat_idx, lon_idx]
+
         magicalExtension(tmp)
 
         for varname in all_varnames:
             for k, cnt_box in enumerate(cnt_boxes):
                 _wd = watertime_tools.getWaterday(_t, no_leap=True)
                 if _wd >= cnt_box['wd_beg'] and _wd <= cnt_box['wd_end']:
-
+                    
+                    data[varname]['cnt_ttl'][k] += 1
                     data[varname]['cnt'][k][IVT_cond_met_idx] += 1
                     data[varname]['avg'][k][IVT_cond_met_idx] += tmp[varname][IVT_cond_met_idx]
                     data[varname]['std'][k][IVT_cond_met_idx] += tmp[varname][IVT_cond_met_idx]**2
@@ -240,9 +268,12 @@ with netCDF4.Dataset(args.output, 'w', format='NETCDF4') as ds:
     var_lat[:] = lat 
     var_lon[:] = lon
 
+    ds.setncattr("beg_wateryear", args.beg_year) 
+    ds.setncattr("end_wateryear", args.end_year) 
+
     for varname in all_varnames:
-       
-        for subvarname in ['avg', 'std', 'cnt']: 
+               
+        for subvarname in ['avg', 'std', 'cnt', 'cnt_ttl']: 
             _var = ds.createVariable("/%s/%s" % (subvarname, varname), 'f4', ('box', 'lat', 'lon'))
             for k in range(len(cnt_boxes)):
                 _var[k, :, :] = data[varname][subvarname][k]

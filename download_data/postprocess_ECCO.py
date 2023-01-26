@@ -38,6 +38,11 @@ class JOB:
         output_filename_0p50deg = "%s/ECCO_mixedlayer_0p50deg_%s.nc" % (output_dir_0p50deg, time_now_str, )
         already_exists = os.path.isfile(output_filename_0p50deg)
 
+
+        if not os.path.isfile(input_filename):
+            print("Error: Input file %s does not exist." % (input_filename,))
+            return
+
         if already_exists:
             print("[%s] Data already exists. Skip." % (time_now_str, ))
 
