@@ -4,7 +4,7 @@ import netCDF4
 from datetime import (datetime, timedelta, timezone)
 import traceback
 import anomalies
-import date_tools, fmon_tools, domain_tools, NK_tools
+import date_tools, fmon_tools, domain_tools, NK_tools, watertime_tools
 from pathlib import Path
 import argparse
 
@@ -18,6 +18,7 @@ parser.add_argument('--end-year', type=int, help='Date string: yyyy-mm-dd', requ
 parser.add_argument('--output',   type=str, help='Output file', default="")
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
+parser.add_argument('--IVT-threshold', type=float, default=250.0)
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
 
 args = parser.parse_args()
@@ -45,6 +46,9 @@ if total_days <= 0:
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "dTdt"]
 ignored_months = [4, 5, 6, 7, 8, 9]
 
+ERA5_lat_raw = None
+ERA5_lon_raw = None
+
 lat_idx = None
 lon_idx = None
 
@@ -64,7 +68,7 @@ cnt_boxes_settings = [
 
 cnt_boxes = []
 
-for cnt_boxes_setting in enumerate(cnt_boxes_settings):
+for k, cnt_boxes_setting in enumerate(cnt_boxes_settings):
 
     cnt_boxes.append({
         'name' : cnt_boxes_setting[0],
@@ -130,7 +134,7 @@ for d, _t in enumerate(t_vec):
         except Exception as e:
 
             print(traceback.format_exc()) 
-            raise Error("Fail to load the day: %s" % (str(_t),))
+            raise Exception("Fail to load the day: %s" % (str(_t),))
 
         
 
@@ -152,8 +156,10 @@ for d, _t in enumerate(t_vec):
 
                 if varname == "dTdt":
 
-                    info_l = load_data.getFileAndIndex("ERA5", _t + timedelta(days=-1), root_dir="data", varname=varname)
-                    info_r = load_data.getFileAndIndex("ERA5", _t + timedelta(days=1), root_dir="data", varname=varname)
+
+                    load_varname = "sst"
+                    info_l = load_data.getFileAndIndex("ERA5", _t + timedelta(days=-1), root_dir="data", varname=load_varname)
+                    info_r = load_data.getFileAndIndex("ERA5", _t + timedelta(days=1), root_dir="data", varname=load_varname)
 
                     print("Load `%s` from file: %s" % (load_varname, info_l['filename']))
                     with netCDF4.Dataset(info_l['filename'], "r") as ds:
@@ -176,8 +182,8 @@ for d, _t in enumerate(t_vec):
                         tmp = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
                     
                 for k, cnt_box in enumerate(cnt_boxes):
-
-                    if _t >= cnt_box['wd_beg'] and _t <= cnt_box['wd_end']:
+                    _wd = watertime_tools.getWaterday(_t, no_leap=True)
+                    if _wd >= cnt_box['wd_beg'] and _wd <= cnt_box['wd_end']:
 
                         data[varname]['cnt'][k][IVT_cond_met_idx] += 1
                         data[varname]['avg'][k][IVT_cond_met_idx] += tmp[IVT_cond_met_idx]
@@ -186,7 +192,7 @@ for d, _t in enumerate(t_vec):
             except Exception as e:
 
                 print(traceback.format_exc()) 
-                raise Error("Fail to load the day: %s" % (str(_t),))
+                raise Exception("Fail to load the day: %s" % (str(_t),))
 
 
 
@@ -195,11 +201,11 @@ for varname in ERA5_varnames:
 
     _data = data[varname]
 
-    for k, cnt_box in enumeratt(cnt_boxes):
+    for k, cnt_box in enumerate(cnt_boxes):
 
         cnt = _data['cnt'][k]
         _data['avg'][k] /= cnt
-        _data['std'][k] = np.sqrt((_data['std'][k][IVT_cond_met_idx] - cnt * tmp[IVT_cond_met_idx]**2) / (cnt - 1))
+        _data['std'][k] = np.sqrt((_data['std'][k] - cnt * _data['avg'][k]**2) / (cnt - 1))
 
 
 
