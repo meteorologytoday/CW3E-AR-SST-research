@@ -3,10 +3,11 @@
 . pretty_latlon.sh
 
 
-output=AR_frequency_statistics.nc
+output_1=AR_frequency_statistics.nc
+output_2=ARnon_frequency_statistics.nc
 
-beg_year=1998
-end_year=2017
+beg_year=1993
+end_year=2022
 
 spatial_rngs=(
     30 65 -160 -110
@@ -18,9 +19,19 @@ if [ ! -f "$mask_file" ]; then
     python3 make_mask_ERA5.py
 fi
 
-python3 AR_frequency_by_map.py --output $output --mask ERA5_mask.nc \
+
+python3 AR_frequency_by_map.py --output $output_2 --mask ERA5_mask.nc \
     --beg-year $beg_year \
     --end-year $end_year \
     --lat-rng ${spatial_rngs[0]} ${spatial_rngs[1]} \
-    --lon-rng ${spatial_rngs[2]} ${spatial_rngs[3]}
+    --lon-rng ${spatial_rngs[2]} ${spatial_rngs[3]} \
+    --IVT-rng 0.0 250.0
 
+python3 AR_frequency_by_map.py --output $output_1 --mask ERA5_mask.nc \
+    --beg-year $beg_year \
+    --end-year $end_year \
+    --lat-rng ${spatial_rngs[0]} ${spatial_rngs[1]} \
+    --lon-rng ${spatial_rngs[2]} ${spatial_rngs[3]} \
+    --IVT-rng 250.0 1e9
+
+ncdiff -O $output_1 $output_2 ARdiff.nc

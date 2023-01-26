@@ -8,6 +8,12 @@ import date_tools, fmon_tools, domain_tools, NK_tools, watertime_tools
 from pathlib import Path
 import argparse
 
+def magicalExtension(_data):
+
+    _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
+    _data['pme'] = _data['mtpr'] + _data['mer']
+
+
 parser = argparse.ArgumentParser(
                     prog = 'plot_skill',
                     description = 'Plot prediction skill of GFS on AR.',
@@ -18,7 +24,7 @@ parser.add_argument('--end-year', type=int, help='Date string: yyyy-mm-dd', requ
 parser.add_argument('--output',   type=str, help='Output file', default="")
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--IVT-threshold', type=float, default=250.0)
+parser.add_argument('--IVT-rng', type=float, nargs=2, default=[250.0, np.inf])
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
 
 args = parser.parse_args()
@@ -43,7 +49,14 @@ if total_days <= 0:
     raise Exception("No days are avaiable.")
 
 
-ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "dTdt"]
+ERA5_varnames = ["dTdt", "IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
+
+
+extended_varnames = ["net_sfc_hf", "pme"]
+
+all_varnames = ERA5_varnames + extended_varnames
+
+
 ignored_months = [4, 5, 6, 7, 8, 9]
 
 ERA5_lat_raw = None
@@ -88,6 +101,7 @@ with netCDF4.Dataset(args.mask, "r") as ds:
     landsea_mask = np.ma.array(ds.variables["mask"][:], keep_mask=False)  # 1=ocean, 0=land
     mask = (1 - landsea_mask).astype(bool) # in masked_array, unused grid are denoted with "true"
 
+
 for d, _t in enumerate(t_vec):
         
     _data = {}
@@ -126,29 +140,29 @@ for d, _t in enumerate(t_vec):
 
                     print("Shape of mask: ", mask.shape)
 
+                    for varname in all_varnames:
+
+                        data[varname] = {
+                            'cnt' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'avg' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                            'std' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
+                        }
 
                 
                 IVT = ds.variables["IVT"][info['idx'], lat_idx, lon_idx]
-                IVT_cond_met_idx = IVT >= args.IVT_threshold
+                IVT_cond_met_idx = (IVT >= args.IVT_rng[0]) & (IVT < args.IVT_rng[1])
 
         except Exception as e:
 
             print(traceback.format_exc()) 
             raise Exception("Fail to load the day: %s" % (str(_t),))
 
-        
 
+        tmp = {}
 
         # Load ERA5 data
         for i, varname in enumerate(ERA5_varnames):
 
-            if not (varname in data):
-
-                data[varname] = {
-                    'cnt' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
-                    'avg' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
-                    'std' : [ np.zeros((len(lat), len(lon))) for _ in range(len(cnt_boxes))],
-                }
 
             try:
 
@@ -169,7 +183,7 @@ for d, _t in enumerate(t_vec):
                     with netCDF4.Dataset(info_r['filename'], "r") as ds:
                         _data_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
 
-                    tmp = (_data_r - _data_l) / (2 * 86400.0)
+                    tmp[varname] = (_data_r - _data_l) / (2 * 86400.0)
 
                 else:
                     # Load observation (the 'truth')
@@ -179,15 +193,8 @@ for d, _t in enumerate(t_vec):
 
                     with netCDF4.Dataset(info['filename'], "r") as ds:
                         
-                        tmp = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
+                        tmp[varname] = ds.variables[load_varname][info['idx'], lat_idx, lon_idx]
                     
-                for k, cnt_box in enumerate(cnt_boxes):
-                    _wd = watertime_tools.getWaterday(_t, no_leap=True)
-                    if _wd >= cnt_box['wd_beg'] and _wd <= cnt_box['wd_end']:
-
-                        data[varname]['cnt'][k][IVT_cond_met_idx] += 1
-                        data[varname]['avg'][k][IVT_cond_met_idx] += tmp[IVT_cond_met_idx]
-                        data[varname]['std'][k][IVT_cond_met_idx] += tmp[IVT_cond_met_idx]**2
 
             except Exception as e:
 
@@ -195,9 +202,19 @@ for d, _t in enumerate(t_vec):
                 raise Exception("Fail to load the day: %s" % (str(_t),))
 
 
+        magicalExtension(tmp)
+
+        for varname in all_varnames:
+            for k, cnt_box in enumerate(cnt_boxes):
+                _wd = watertime_tools.getWaterday(_t, no_leap=True)
+                if _wd >= cnt_box['wd_beg'] and _wd <= cnt_box['wd_end']:
+
+                    data[varname]['cnt'][k][IVT_cond_met_idx] += 1
+                    data[varname]['avg'][k][IVT_cond_met_idx] += tmp[varname][IVT_cond_met_idx]
+                    data[varname]['std'][k][IVT_cond_met_idx] += tmp[varname][IVT_cond_met_idx]**2
 
 
-for varname in ERA5_varnames:
+for varname in all_varnames:
 
     _data = data[varname]
 
@@ -223,10 +240,10 @@ with netCDF4.Dataset(args.output, 'w', format='NETCDF4') as ds:
     var_lat[:] = lat 
     var_lon[:] = lon
 
-    for varname in ERA5_varnames:
+    for varname in all_varnames:
        
         for subvarname in ['avg', 'std', 'cnt']: 
-            _var = ds.createVariable("%s_%s" % (varname, subvarname), 'f4', ('box', 'lat', 'lon'))
+            _var = ds.createVariable("/%s/%s" % (subvarname, varname), 'f4', ('box', 'lat', 'lon'))
             for k in range(len(cnt_boxes)):
                 _var[k, :, :] = data[varname][subvarname][k]
         
