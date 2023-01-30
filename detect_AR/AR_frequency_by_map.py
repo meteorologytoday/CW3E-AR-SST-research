@@ -10,10 +10,11 @@ import argparse
 
 def magicalExtension(_data):
 
-    _data['net_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
-    _data['pme'] = _data['mtpr'] + _data['mer']
-    _data['U']   = np.sqrt(_data['u10']**2 + _data['v10']**2)
-    _data['ao_T_diff']   = _data["t2m"] - _data["sst"] 
+    _data['net_sfc_hf']     = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
+    _data['pme']            = _data['mtpr'] + _data['mer']
+    _data['U']              = np.sqrt(_data['u10']**2 + _data['v10']**2)
+    _data['ao_T_diff']      = _data["t2m"] - _data["sst"] 
+    _data['EkmanAdv_adj']   = _data["EkmanAdv"] * 50 / _data["MLD"] 
 
 
 parser = argparse.ArgumentParser(
@@ -28,6 +29,7 @@ parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', re
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--IVT-rng', type=float, nargs=2, default=[250.0, np.inf])
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
+
 
 args = parser.parse_args()
 
@@ -51,12 +53,12 @@ if total_days <= 0:
     raise Exception("No days are avaiable.")
 
 
-ERA5_varnames = ["dTdt", "IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
+ERA5_varnames = ["dTdt", "IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", "EkmanAdv"]
 
-ECCO_varnames = ["MLD", "dT", "dS", "db", ]
+ECCO_varnames = ["MLD", "dT", "dS", "db"]
 
 
-extended_varnames = ["net_sfc_hf", "pme", "U", "ao_T_diff"]
+extended_varnames = ["net_sfc_hf", "pme", "U", "ao_T_diff", "EkmanAdv_adj"]
 
 all_varnames = ERA5_varnames + ECCO_varnames + extended_varnames
 
@@ -84,6 +86,10 @@ cnt_boxes_settings = [
     ('Jan', ( 1, 1), (1,  31)),
     ('Feb', ( 2, 1), (2,  28)),
     ('Mar', ( 3, 1), (3,  31)),
+    ('Oct-Nov', (10, 1), (11,  30)),
+    ('Dec-Jan', (12, 1), ( 1,  31)),
+    ('Feb-Mar', ( 2, 1), ( 3,  31)),
+    ('Oct-Mar', ( 2, 1), ( 3,  31)),
 ]
 
 
@@ -261,6 +267,7 @@ with netCDF4.Dataset(args.output, 'w', format='NETCDF4') as ds:
     dim_lat = ds.createDimension('lat', len(lat))
     dim_lon = ds.createDimension('lon', len(lon))
     dim_box = ds.createDimension('box', len(cnt_boxes))
+    dim_boxname = ds.createDimension('boxname', 256)
 
     var_lat = ds.createVariable('lat', 'f4', ('lat',))
     var_lon = ds.createVariable('lon', 'f4', ('lon',))
@@ -271,11 +278,17 @@ with netCDF4.Dataset(args.output, 'w', format='NETCDF4') as ds:
     ds.setncattr("beg_wateryear", args.beg_year) 
     ds.setncattr("end_wateryear", args.end_year) 
 
+    var_boxnames = ds.createVariable("boxname", 'S1', ('box', 'boxname'))
+    for b, cnt_box in enumerate(cnt_boxes):
+        var_boxnames[b, :] = netCDF4.stringtochar(np.array([cnt_box["name"]], dtype="S256"))
+
     for varname in all_varnames:
                
         for subvarname in ['avg', 'std', 'cnt', 'cnt_ttl']: 
             _var = ds.createVariable("/%s/%s" % (subvarname, varname), 'f4', ('box', 'lat', 'lon'))
             for k in range(len(cnt_boxes)):
                 _var[k, :, :] = data[varname][subvarname][k]
+    
         
+
  

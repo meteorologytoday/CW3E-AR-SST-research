@@ -22,7 +22,7 @@ parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', re
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
 parser.add_argument('--ocn-dataset', type=str, help='The ocean. Can be `ORA5`, `ORA5-clim`', choices=['ORA5', 'ORA5-clim', 'ECCO'], required=True)
-parser.add_argument('--mld', type=str, help='The mixed layer specifier.', choices=['somxl010', 'somxl030'], required=True)
+parser.add_argument('--MLD-method', type=str, help='ECCO or RHO-03', required=True, choices=['RHO-03', 'ECCO'])
 
 args = parser.parse_args()
 
@@ -47,9 +47,9 @@ if total_days <= 0:
     raise Exception("No days are avaiable.")
 
 
-ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", ]
+ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", 'EkmanAdv']
 ORA5_varnames = ["MLD", "db", "dT"]
-ECCO_varnames = ["MLD", "dS", "dT", "db"]
+ECCO_varnames = ["MLD", "dS", "dT", "db", "dMLTdx", "dMLTdy", "MLU", "MLV", "U_g", "V_g", 'w_b', 'dMLDdx', 'dMLDdy']
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -70,7 +70,7 @@ lon = None
 wgt = None
 f_co = None
 
-computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'dTdt_Ekman', 'w_Ekman']
+computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'dhdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'ent_Ekman', 'w_Ekman', 'EkmanAdv_adj', 'ent_ADV', 'geo_ADV', 'ageo_ADV', 'ttl_ADV', 'ent_slope']
 
 ts = { varname : np.zeros((total_days,), dtype=np.float32) 
     for varname in (ERA5_varnames + ECCO_varnames + computed_vars) 
@@ -92,20 +92,29 @@ def magicalExtension(_data):
     _data['sfhf_wosw'] = - ( _data['msnlwrf'] + _data['msshf'] + _data['mslhf'] ) # positive upwards
     _data['pme']       = _data['mtpr'] + _data['mer']                             # positive means raining
  
-    _data['w_deepen'] = NK_tools.cal_we(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db']) 
-    _data['dTdt_deepen'] = NK_tools.cal_dSSTdt_e(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db'], _data['dT'])
+    #_data['w_deepen'] = NK_tools.cal_we(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db']) 
+    #_data['dTdt_deepen'] = NK_tools.cal_dSSTdt_e(_data["MLD"], _data["U"], _data['sfhf_wosw'], _data['pme'], _data['msnswrf'], _data['db'], _data['dT'])
  
     #_data['DeltaOnlyU'] = NK_tools.calDeltaOnlyU(_data["MLD"], _data["U"])
 
+    _data['dTdt_deepen'] = - _data['dhdt'] * _data['dT'] / _data["MLD"] 
     
     _data['dTdt_sfchf'] = _data['net_sfc_hf'] / (3996*1026 * _data['MLD'])
     _data['dTdt_no_sfchf'] = _data['dTdt'] - _data['dTdt_sfchf']
 
 
-    _data['w_Ekman']  = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
-    _data['dTdt_Ekman']  = _data['w_Ekman'] * _data['dT'] / _data['MLD']
+    _data['w_Ekman']   = _data['curltau'] / f_co[:, np.newaxis] / ec.rho_sw
+    _data['ent_Ekman'] = - _data['w_Ekman'] * _data['dT'] / _data['MLD']
 
     #_data['dTdt_Ekman'][_data['dTdt_Ekman'] < 0] = 0
+    _data['EkmanAdv_adj']   = _data["EkmanAdv"] * 50 / _data["MLD"]
+ 
+    _data['ttl_ADV']  = - ( _data["MLU"] * _data["dMLTdx"] + _data["MLV"] * _data["dMLTdy"] )
+    _data['geo_ADV']  = - ( _data["U_g"] * _data["dMLTdx"] + _data["V_g"] * _data["dMLTdy"] )
+    _data['ageo_ADV'] = - ( ( _data["MLU"] - _data["U_g"] ) * _data["dMLTdx"] + ( _data["MLV"] - _data["V_g"] ) * _data["dMLTdy"] )
+    _data['ent_ADV'] = - _data["dT"] * _data["w_b"] / _data["MLD"]
+
+    _data['ent_slope'] = - ( _data["MLU"] * _data['dMLDdx'] + _data["MLV"] * _data['dMLDdy'] ) * _data['dT'] / _data['MLD']
  
 
 with netCDF4.Dataset(args.mask, "r") as ds:
@@ -270,7 +279,7 @@ for d, _t in enumerate(t_vec):
 
                 for varname in ECCO_varnames:
 
-                    info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname)
+                    info = load_data.getFileAndIndex("ECCO", _t, root_dir="data", varname=varname, MLD_method=args.MLD_method)
                     print("Load `%s` from file: %s" % ( varname, info['filename'] ))
 
                     with netCDF4.Dataset(info['filename'], "r") as ds:
@@ -290,6 +299,35 @@ for d, _t in enumerate(t_vec):
 
                 print(traceback.format_exc()) 
                 print("ECCO: Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+
+                I_have_all_data_for_today = False
+
+
+            # Special: compute dh/dt as variable "dTdt"
+            try:
+
+                varname = "MLD"
+                load_varname = varname
+
+                # Load observation (the 'truth')
+                    
+                info_l = load_data.getFileAndIndex("ECCO", _t + timedelta(days=-1), root_dir="data", varname=varname, MLD_method=args.MLD_method)
+                info_r = load_data.getFileAndIndex("ECCO", _t + timedelta(days= 1), root_dir="data", varname=varname, MLD_method=args.MLD_method)
+
+                print("Load `%s` from file: %s" % (load_varname, info_l['filename']))
+                with netCDF4.Dataset(info_l['filename'], "r") as ds:
+                    _data_l = ds.variables[load_varname][info_l['idx'], lat_idx, lon_idx]
+
+                print("Load `%s` from file: %s" % (load_varname, info_r['filename']))
+                with netCDF4.Dataset(info_r['filename'], "r") as ds:
+                    _data_r = ds.variables[load_varname][info_r['idx'], lat_idx, lon_idx]
+
+                _data['dhdt'] = (_data_r - _data_l) / (2 * 86400.0)
+
+            except Exception as e:
+
+                print(traceback.format_exc()) 
+                print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
                 I_have_all_data_for_today = False
 

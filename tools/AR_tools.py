@@ -71,8 +71,6 @@ def detectAbove(_t, x, x_threshold, glue_threshold=0):
         t = _t
 
 
-    above = x >= x_threshold
-
     t_segs  = []
     seg_i = 0
 
@@ -124,6 +122,48 @@ def detectAbove(_t, x, x_threshold, glue_threshold=0):
     
         
     t_segs = glue(t_segs, glue_threshold)
+    t_inds = findTimeInd(_t, t_segs)   
+ 
+    return t_segs, t_inds
+
+
+
+def detectAbove_isolated(_t, x, x_threshold, dt):
+
+    if np.any(np.isnan(x)):
+        raise Exception("Data cannot contain NaN")
+
+    dtype_t = type(_t[0])
+
+    if dtype_t is datetime:
+        t = [ _tt.timestamp() for _tt in _t ]
+    else:
+        t = _t
+
+
+    dt_seconds = dt.total_seconds()
+    half_dt_seconds = dt_seconds / 2
+
+    t_segs  = []
+    seg_i = 0
+
+    t_seg = [np.nan, np.nan]
+    for i in range(len(x)):
+        
+        if x[i] >= x_threshold:
+            t_seg[0] = t[i] - half_dt_seconds
+            t_seg[1] = t[i] + half_dt_seconds
+                
+            
+            if dtype_t is datetime:
+                t_seg[0] = datetime.fromtimestamp(t_seg[0])
+                t_seg[1] = datetime.fromtimestamp(t_seg[1])
+
+            t_segs.append(t_seg)
+
+        t_seg = [np.nan, np.nan]
+
+    
     t_inds = findTimeInd(_t, t_segs)   
  
     return t_segs, t_inds

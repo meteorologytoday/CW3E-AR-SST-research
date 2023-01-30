@@ -11,7 +11,7 @@ parser.add_argument('--no-display', action="store_true")
 parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--input',  nargs=2,    type=str, help='Input file.', required=True)
-parser.add_argument('--output', type=str, help='Output file.', default="")
+parser.add_argument('--output-dir', type=str, help='Output direrctory.', default="")
 
 args = parser.parse_args()
 
@@ -46,7 +46,11 @@ for i, filename in enumerate(args.input):
   
             if "frq" not in _data["avg"]:
                 _data["avg"]["frq"] = _data["cnt"][varname] / _data["cnt_ttl"][varname]
-    
+   
+        boxnames = netCDF4.chartostring(f.variables["boxname"][:])
+
+
+    print(boxnames) 
     data.append(_data)
 
     
@@ -67,16 +71,6 @@ from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 
 print("done")
-
-box_names = [
-    "Oct",
-    "Nov",
-    "Dec",
-    "Jan",
-    "Feb",
-    "Mar",
-]
-
 
 plot_info = {
 
@@ -226,11 +220,12 @@ proj_norm = ccrs.PlateCarree()
 
 for box in range(0, nbox, 1):
 
-    print("Box: %d => %s" % (box, box_names[box]))
+    boxname = boxnames[box]
+    print("Box: %d => %s" % (box, boxname))
     
-    fig, ax = plt.subplots(3, 3, subplot_kw=dict(projection=proj))
+    fig, ax = plt.subplots(3, 3, figsize=(15, 10), subplot_kw=dict(projection=proj))
 
-    fig.suptitle(box_names[box])
+    fig.suptitle(boxname)
     
 
     plot_avg(ax[0, 0], 0, box, "frq")
@@ -245,18 +240,6 @@ for box in range(0, nbox, 1):
     plot_diff(ax[2, 2], box, "U")
 
 
-
-    """
-    diff = data[0]["avg"]["net_sfc_hf"][box, :, :] - data[1]["avg"]["net_sfc_hf"][box, :, :]
-    std  = (data[0]["std"]["net_sfc_hf"][box, :, :] + data[1]["std"]["net_sfc_hf"][box, :, :]) / 2
-    sigf = (np.abs(diff) >= std).astype(np.float32) + 0.25  # 0.25 = false, 0.75 = true
-    pinfo = plot_info["net_sfc_hf"]["diff"]
-    mappable = ax[1].contourf(lon, lat, diff, pinfo["levs"], cmap=pinfo["cmap"], transform=proj_norm, extend="both")
-    cb = plt.colorbar(mappable, ax=ax[1], orientation="vertical")
-
-    cs = plt.contourf(lon, lat, sigf, [0, 0.5, np.inf], colors="none", hatches=[None, "..", ], transform=proj_norm)
-    plt.setp(cs.collections , linewidth=.5, edgecolor="black")
-    """
 
     for _ax in ax.flatten():
         _ax.set_global()
@@ -281,6 +264,11 @@ for box in range(0, nbox, 1):
 
 
     
+    if args.output_dir != "":
+       
+        output_filename = "%s/AR_freq_map_%s.png" % (args.output_dir, boxname,)
+        print("Output filename: %s" % (output_filename,))
+        fig.savefig(output_filename, dpi=200)
 
 
     
@@ -289,7 +277,4 @@ for box in range(0, nbox, 1):
 if not args.no_display:
     plt.show()
 
-if args.output != "":
-    
-    fig.savefig(args.output, dpi=200)
 

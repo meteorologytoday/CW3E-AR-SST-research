@@ -5,20 +5,12 @@
 
 #ocn_dataset="ORA5-clim"
 ocn_dataset="ECCO"
+
         
-output_root=output_ECCO_${ocn_dataset}
+output_root=output_${ocn_dataset}
 
 beg_year=1998
 end_year=2017
-
-spatial_rngs=(
-    30 50 -160 -130
-    30 40 -160 -145
-    30 40 -145 -130
-    40 50 -160 -145
-    40 50 -145 -130
-    31 43 230 244
-)
 
 AR_dt_rngs=(
    3 50
@@ -27,7 +19,13 @@ AR_dt_rngs=(
 #fi
 
 spatial_rngs=(
+    40 50 -150 -130
     30 50 -160 -130
+    30 40 -160 -145
+    30 40 -145 -130
+    40 50 -160 -145
+    40 50 -145 -130
+    31 43 230 244
 )
 
 AR_dt_rngs=(
@@ -47,7 +45,7 @@ python3 count_days_map.py \
     --output $output_dir/AR_days.nc    &
 fi
 
-for mld in somxl030  ; do
+for MLD_method in RHO-03 ECCO  ; do
 
     for i in $( seq 1 $(( "${#spatial_rngs[@]}" / 4 )) ); do
 
@@ -58,7 +56,7 @@ for mld in somxl030  ; do
 
         time_str=$( printf "%04d-%04d" $beg_year $end_year )
         spatial_str=$( printf "%s-%s_%s-%s" $( pretty_lat $lat_min ) $( pretty_lat $lat_max ) $( pretty_lon $lon_min ) $( pretty_lon $lon_max )  )
-        mld_str="mld${mld}"
+        mld_str="mld${MLD_method}"
         output_dir=$output_root/${time_str}_${spatial_str}_${mld_str}
 
         echo "time_str    : $time_str"    
@@ -88,7 +86,7 @@ for mld in somxl030  ; do
                 --end-year=$end_year \
                 --lat-rng $lat_min $lat_max \
                 --lon-rng $lon_min $lon_max \
-                --mld $mld \
+                --MLD-method $MLD_method \
                 --ocn-dataset $ocn_dataset \
                 --mask $mask_file \
                 --output-dir $output_dir
@@ -101,7 +99,10 @@ for mld in somxl030  ; do
         #python3 dTdt_decomposition_and_output.py --input $output_AR_file --output "$output_AR_evts_database"
         
         #fi
-
+        python3 plot_dTdt_pdf.py \
+            --input $output_dir/AR_timeseries_climanom.nc \
+            --output $output_dir \
+            --no-display
 
         for j in $( seq 1 $(( "${#AR_dt_rngs[@]}" / 2 )) ); do
 
@@ -112,7 +113,7 @@ for mld in somxl030  ; do
             output_AR_evts_database=$output_dir/AR_evts.csv
 
             echo "Generating analysis: $output_AR_analysis_fig"
-            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --IVT-threshold 250.0 --output-database $output_AR_evts_database # --no-display 
+            python3 dTdt_analysis.py --input $output_AR_file --AR-dt-rng $AR_dt_min $AR_dt_max --output "$output_AR_analysis_fig" --IVT-threshold 250.0 --output-database $output_AR_evts_database  --no-display 
 
         done
 

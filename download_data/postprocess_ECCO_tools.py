@@ -1,6 +1,8 @@
 import numpy as np
 import netCDF4
+import vorticity_tools, advection_tools
 from buoyancy_nonlinear import TS2rho, TS2b
+import earth_constants as ec
 #from buoyancy_linear import TS2rho
 
 default_fill_value = 1e20
@@ -145,23 +147,35 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
 
 
 def processECCO(
-    input_filename,
+    input_filename_TS,
+    input_filename_VEL,
+    input_filename_SSH,
     output_filename,
     varname_TEMP = "THETA",
     varname_SALT = "SALT",
+    varname_UVEL = "EVEL",
+    varname_VVEL = "NVEL",
+    varname_WVEL = "WVEL",
+    varname_SSH  = "SSH",
     varname_z_T  = "Z",
     varname_z_W  = "Z_bnds",
     varname_lat  = "latitude",
     varname_lon  = "longitude",
+    input_filename_MLD = "",
+    varname_MLD  = "MXLDEPTH",
     lon_l = 0.0,
     lon_r = 360.0,
     lat_b = -90.0,
     lat_t = 90.0,
+    MLD_dev = 0.03,
     fill_value   = default_fill_value,
 ):
 
 
-    print("INPUT FILE: ", input_filename)
+    print("INPUT FILE TS : ", input_filename_TS)
+    print("INPUT FILE VEL: ", input_filename_VEL)
+    print("INPUT FILE SSH: ", input_filename_SSH)
+    print("INPUT FILE MLD: ", input_filename_MLD)
 
     # 1. convert T and S to density
     # 2. Find the mixed-layer depth
@@ -169,7 +183,7 @@ def processECCO(
     # 4. Compute mixed-layer salinity
     # 5. Output file.
 
-    with netCDF4.Dataset(input_filename, "r") as ds:
+    with netCDF4.Dataset(input_filename_TS, "r") as ds:
         z_T = ds.variables[varname_z_T][:]
         z_W_tmp = ds.variables[varname_z_W][:, :]  # (z_T, nv=2)
 
@@ -189,10 +203,26 @@ def processECCO(
 
 
 
-    with netCDF4.Dataset(input_filename, "r") as ds:
+    with netCDF4.Dataset(input_filename_TS, "r") as ds:
         TEMP = ds.variables[varname_TEMP][:, :, lat_idx, lon_idx]  # (time, z, y, x)
         SALT = ds.variables[varname_SALT][:, :, lat_idx, lon_idx]  # (time, z, y, x)
 
+    with netCDF4.Dataset(input_filename_VEL, "r") as ds:
+        UVEL = ds.variables[varname_UVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
+        VVEL = ds.variables[varname_VVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
+        WVEL = ds.variables[varname_WVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
+
+    with netCDF4.Dataset(input_filename_SSH, "r") as ds:
+        SSH  = ds.variables[varname_SSH][:, lat_idx, lon_idx]  # (time, y, x)
+
+    if input_filename_MLD != "":
+        with netCDF4.Dataset(input_filename_MLD, "r") as ds:
+            MLD  = ds.variables[varname_MLD][:, lat_idx, lon_idx]  # (time, y, x)
+
+
+
+    f_co = 2 * ec.Omega * np.sin(lat * np.pi / 180)
+    f_co = f_co[:, None]
 
     Nt, Nz, Ny, Nx = TEMP.shape
     print("Shape = (%d, %d, %d, %d)" % (Nt, Nz, Ny, Nx))
@@ -208,21 +238,46 @@ def processECCO(
     print("Compute mixed-layer depth")    
     # compute mixed-layer depth
 
-    MLD = np.zeros((Nt, Ny, Nx))
+    if input_filename_MLD == "":
+        MLD = np.zeros((Nt, Ny, Nx))
+
     MLT = np.zeros((Nt, Ny, Nx))
     MLS = np.zeros((Nt, Ny, Nx))
     
+    MLU = np.zeros((Nt, Ny, Nx))
+    MLV = np.zeros((Nt, Ny, Nx))
+
+
+    dMLTdx = np.zeros((Nt, Ny, Nx))
+    dMLTdy = np.zeros((Nt, Ny, Nx))
+    dMLSdx = np.zeros((Nt, Ny, Nx))
+    dMLSdy = np.zeros((Nt, Ny, Nx))
+    dMLDdx = np.zeros((Nt, Ny, Nx))
+    dMLDdy = np.zeros((Nt, Ny, Nx))
+ 
     dT = np.zeros((Nt, Ny, Nx))
     dS = np.zeros((Nt, Ny, Nx))
     db = np.zeros((Nt, Ny, Nx))
 
+
+    w_b = np.zeros((Nt, Ny, Nx))
+    
+    V_g = np.zeros((Nt, Ny, Nx))
+    U_g = np.zeros((Nt, Ny, Nx))
+
     for t in range(Nt):
-        MLD[t, :, :] = findMLD_rho(rho[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=0.03)
+
+        if input_filename_MLD == "":
+            MLD[t, :, :] = findMLD_rho(rho[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=MLD_dev)
+
         MLT[t, :, :] = computeMLMean(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         MLS[t, :, :] = computeMLMean(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
+        MLU[t, :, :] = computeMLMean(UVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
+        MLV[t, :, :] = computeMLMean(VVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
 
         T_b = evalAtMLD_T(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         S_b = evalAtMLD_T(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
+        w_b[t, :, :] = evalAtMLD_T(WVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
 
         MLb = TS2b(MLT[t, :, :], MLS[t, :, :])
         b_b = TS2b(T_b, S_b)
@@ -230,11 +285,15 @@ def processECCO(
         dT[t, :, :] = MLT[t, :, :] - T_b
         dS[t, :, :] = MLS[t, :, :] - S_b
         db[t, :, :] = MLb - b_b
-        
-               
- 
+       
+        # Compute geostrophic velocity           
+        dMLTdx[t, :, :], dMLTdy[t, :, :] = advection_tools.calGrad(MLT[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
+        dMLSdx[t, :, :], dMLSdy[t, :, :] = advection_tools.calGrad(MLS[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
+        dMLDdx[t, :, :], dMLDdy[t, :, :] = advection_tools.calGrad(MLD[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
+        dSSHdx, dSSHdy = advection_tools.calGrad(SSH[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
 
-
+        V_g[t, :, :] =   ec.g0 / f_co * dSSHdx
+        U_g[t, :, :] = - ec.g0 / f_co * dSSHdy
 
     output_vars = {
         'MLD'     : MLD,
@@ -245,6 +304,17 @@ def processECCO(
         'dT'      : dT,
         'dS'      : dS,
         'db'      : db,
+        'MLU'     : MLU,
+        'MLV'     : MLV,
+        'w_b'     : w_b,
+        'V_g'     : V_g,
+        'U_g'     : U_g,
+        'dMLTdx'  : dMLTdx,
+        'dMLTdy'  : dMLTdy,
+        'dMLSdx'  : dMLSdx,
+        'dMLSdy'  : dMLSdy,
+        'dMLDdx'  : dMLDdx,
+        'dMLDdy'  : dMLDdy,
     }
 
     print("Writing output file: ", output_filename)
@@ -262,6 +332,9 @@ def processECCO(
         var_lat[:] = lat
 
         for k, d in output_vars.items():
+
+            print("Output %s: " % (k, ), "; dim = ", d.shape)
+
             _var = ds.createVariable(k, np.float32, ('time', 'lat', 'lon'), fill_value=fill_value)
             _var[:, :, :] = d
 
@@ -270,15 +343,21 @@ def processECCO(
 if __name__ == "__main__" : 
 
     print("*** This is for testing ***") 
-    input_filename ="data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4/OCEAN_TEMPERATURE_SALINITY_day_mean_1992-01-01_ECCO_V4r4_latlon_0p50deg.nc"
+    input_filename_TS ="data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4/OCEAN_TEMPERATURE_SALINITY_day_mean_1997-12-10_ECCO_V4r4_latlon_0p50deg.nc"
+    input_filename_SSH ="data/ECCO/ECCO_L4_SSH_05DEG_DAILY_V4R4B/SEA_SURFACE_HEIGHT_day_mean_1997-12-10_ECCO_V4r4b_latlon_0p50deg.nc"
+    input_filename_VEL ="data/ECCO/ECCO_L4_OCEAN_VEL_05DEG_DAILY_V4R4/OCEAN_VELOCITY_day_mean_1997-12-10_ECCO_V4r4_latlon_0p50deg.nc"
 
     output_filename = "test_convert_ECCO5.nc"
 
-    print("Input  file : %s" % (input_filename,))
+    print("Input  file TS  : %s" % (input_filename_TS,))
+    print("Input  file VEL : %s" % (input_filename_VEL,))
+    print("Input  file SSH : %s" % (input_filename_SSH,))
     print("Output file: %s" % (output_filename,)) 
 
     processECCO(
-        input_filename,
+        input_filename_TS,
+        input_filename_VEL,
+        input_filename_SSH,
         output_filename,
     ) 
     

@@ -15,7 +15,7 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
         elif varname in ["IWV", "IVT", "IWVKE"]:
             subfolder = "AR_processed"
             filename = "ERA5_AR_%s.nc" % (date.strftime("%Y-%m-%d"),)
-        elif varname in ["vort10", "curltau"]:
+        elif varname in ["vort10", "curltau", "EkmanAdv"]:
             subfolder = "sfc_processed"
             filename = "ERA5_sfc_processed_%s.nc" % (date.strftime("%Y-%m-%d"),)
         else:
@@ -56,12 +56,12 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
 
     elif product == "ECCO":
 
-        if varname in ["SST", "MLT", "SSS", "MLS", "MLD", "dS", "dT", "db"] :
+        if varname in ["SST", "MLT", "SSS", "MLS", "MLD", "dS", "dT", "db", "dMLTdx", "dMLTdy", "dMLSdx", "dMLSdy", "MLU", "MLV", "U_g", "V_g", "w_b", "dMLDdx", "dMLDdy"] :
             filename = "ECCO_mixedlayer_0p50deg_%s.nc" % (date.strftime("%Y-%m-%d"),)
         else:
             raise Exception("Unrecognized varname: %s " % (varname,) )
 
-        filename = os.path.join(root_dir, "ECCO", "processed_0p25deg", filename)
+        filename = os.path.join(root_dir, "ECCO", "processed_0p25deg_%s-MLD" % (kwargs['MLD_method'],), filename)
 
         idx = 0
         lat = "lat"

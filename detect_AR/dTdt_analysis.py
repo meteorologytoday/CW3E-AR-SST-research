@@ -31,7 +31,7 @@ data = {
 
 data_dim = {}
 
-AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "dT", "db", "dTdt", "dTdt_sfchf", "dTdt_no_sfchf", "w_deepen", "dTdt_deepen", "net_sfc_hf", "net_conv_wv", "vort10", "curltau", "dTdt_Ekman"]
+AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "dT", "db", "dTdt", "dTdt_sfchf", "dTdt_no_sfchf", "w_deepen", "dTdt_deepen", "net_sfc_hf", "net_conv_wv", "vort10", "curltau", "ent_Ekman", "ent_ADV", "ttl_ADV", "geo_ADV", "ageo_ADV"]
 
 
 

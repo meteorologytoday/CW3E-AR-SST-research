@@ -2,11 +2,19 @@ import numpy as np
 import earth_constants as ec 
 
 
-def calAdv(Q, u, v, lat, lon, periodoc_lon=True, gap=30.0):
+
+def calGrad(Q, lat, lon, periodoc_lon=True, gap=30.0, mask=None):
 
     r_E = ec.r_E
     
-    Nlat, Nlon = u.shape
+    Nlat, Nlon = Q.shape
+
+    if Nlat != len(lat):
+        raise Exception("Length of lat not consistent")
+
+    if Nlon != len(lon):
+        raise Exception("Length of lon not consistent")
+
 
     deg2rad = np.pi / 180.0
     vort = np.zeros((Nlat, Nlon))
@@ -37,10 +45,32 @@ def calAdv(Q, u, v, lat, lon, periodoc_lon=True, gap=30.0):
     
     dQdx = (np.roll(Q, -1, axis=1) - np.roll(Q, 1, axis=1)) / dx_2
     dQdy = (np.roll(Q, -1, axis=0) - np.roll(Q, 1, axis=0)) / dy_2
+    
+    mask_nsew = np.roll(mask, -1, axis=1) * np.roll(mask, 1, axis=1) * np.roll(mask, -1, axis=0) * np.roll(mask, 1, axis=0)
    
-    #print("dQdx:")
-    #print(dQdx)
+    for _var in [dQdx, dQdy]:
+        _var[0,  :] = 0.0
+        _var[-1, :] = 0.0
+        
+        if periodoc_lon == False:
+            _var[:,  0] = 0.0
+            _var[:, -1] = 0.0
+   
+        _var[mask_nsew == 0] = 0.0
  
+    return dQdx, dQdy
+
+    
+
+def calAdv(Q, u, v, lat, lon, periodoc_lon=True, gap=30.0, mask=None):
+
+    r_E = ec.r_E
+
+    if mask is None:
+        mask = np.ones((len(lat), len(lon)))
+   
+    dQdx, dQdy = calGrad(Q, lat, lon, periodoc_lon=periodoc_lon, gap=gap, mask=mask)
+   
     for _var in [dQdx, dQdy]:
         _var[0,  :] = np.nan
         _var[-1, :] = np.nan

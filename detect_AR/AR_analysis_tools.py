@@ -16,7 +16,7 @@ def within(a, m, M):
 
     return m <= a and a < M
 
-def constructCases(filename, IVT_threshold):
+def constructCases(filename, IVT_threshold, method="normal"):
 
     data = {
         "ttl" : {},
@@ -26,7 +26,7 @@ def constructCases(filename, IVT_threshold):
 
     data_dim = {}
 
-    AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "dT", "db", "dTdt", "dTdt_sfchf", "dTdt_no_sfchf", "w_deepen", "dTdt_deepen", "net_sfc_hf", "net_conv_wv", "vort10", "curltau", "dTdt_Ekman"]
+    AR_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "U", "MLD", "dT", "db", "dTdt", "dTdt_sfchf", "dTdt_no_sfchf", "w_deepen", "dTdt_deepen", "net_sfc_hf", "net_conv_wv", "vort10", "curltau", "ent_Ekman", "ent_ADV", "ttl_ADV", "geo_ADV", "ageo_ADV", "EkmanAdv", "EkmanAdv_adj", "ent_slope"]
 
 
     with netCDF4.Dataset(filename, "r") as ds:
@@ -43,7 +43,14 @@ def constructCases(filename, IVT_threshold):
 
     data['ttl']['IVT'][np.isnan(data['ttl']['IVT'])] = 0.0
 
-    AR_t_segs, AR_t_inds = AR_tools.detectAbove(data_dim['time'], data['ttl']['IVT'], IVT_threshold, glue_threshold=timedelta(hours=24))
+
+    if method == "normal":
+        AR_t_segs, AR_t_inds = AR_tools.detectAbove(data_dim['time'], data['ttl']['IVT'], IVT_threshold, glue_threshold=timedelta(hours=24))
+    elif method == "isolated":
+        AR_t_segs, AR_t_inds = AR_tools.detectAbove_isolated(data_dim['time'], data['ttl']['IVT'], IVT_threshold, timedelta(days=1))
+
+        print(np.sum(AR_t_inds == True, axis=1))
+
 
 
     for i, AR_t_seg in enumerate(AR_t_segs):
@@ -53,7 +60,7 @@ def constructCases(filename, IVT_threshold):
     AR_evts = []
     for k, t_seg in enumerate(AR_t_segs):
 
-        print("Processing the %d-th AR time segment." % (k, ))
+        #print("Processing the %d-th AR time segment." % (k, ))
 
         AR_evt = {}
 
@@ -92,7 +99,12 @@ def constructCases(filename, IVT_threshold):
         AR_evt['dTdt_sfchf']    = np.mean(data['ttl']['dTdt_sfchf'][ind])
         AR_evt['dTdt_no_sfchf'] = np.mean(data['ttl']['dTdt_no_sfchf'][ind])
         
-        AR_evt['dTdt_Ekman']    = np.mean(data['ttl']['dTdt_Ekman'][ind])
+        AR_evt['ent_Ekman']    = np.mean(data['ttl']['ent_Ekman'][ind])
+        AR_evt['ent_ADV']      = np.mean(data['ttl']['ent_ADV'][ind])
+        AR_evt['ent_slope']    = np.mean(data['ttl']['ent_slope'][ind])
+        AR_evt['ttl_ADV']      = np.mean(data['ttl']['ttl_ADV'][ind])
+        AR_evt['geo_ADV']      = np.mean(data['ttl']['geo_ADV'][ind])
+        AR_evt['ageo_ADV']     = np.mean(data['ttl']['ageo_ADV'][ind])
 
         AR_evt['t2m']   = np.mean(data['ttl']['t2m'][ind])
         AR_evt['ao_Tdiff']  = np.mean(data['ttl']['t2m'][ind] - data['ttl']['sst'][ind])
@@ -104,9 +116,16 @@ def constructCases(filename, IVT_threshold):
         
         AR_evt['mean_IVT'] = np.mean(data['ttl']['IVT'][ind])
         AR_evt['max_IVT']  = np.amax(data['ttl']['IVT'][ind])
+
+        AR_evt['EkmanAdv'] = np.mean(data['ttl']['EkmanAdv'][ind])
+        AR_evt['EkmanAdv_adj'] = np.mean(data['ttl']['EkmanAdv_adj'][ind])
         
-        if AR_evt['dt'] == 0:
-            AR_evt = None
+        AR_evt['OCN_nonADV'] = AR_evt['dTdt_no_sfchf'] - AR_evt['ttl_ADV']
+        
+        
+        
+#        if AR_evt['dt'] == 0:
+#            AR_evt = None
 
 
         """
