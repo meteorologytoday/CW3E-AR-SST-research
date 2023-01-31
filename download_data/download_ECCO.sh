@@ -17,7 +17,7 @@ datasets=(
 )
 
 datasets=(
-    ECCO_L4_MIXED_LAYER_DEPTH_05DEG_DAILY_V4R4
+    ECCO_L4_OCEAN_3D_MIX_COEFFS_05DEG_V4R4
 )
 
 for dataset in "${datasets[@]}"; do

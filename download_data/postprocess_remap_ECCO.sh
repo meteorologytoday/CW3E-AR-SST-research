@@ -2,10 +2,7 @@
 
 remap_filename="remap_ECCO_to_ERA5_bilinear.nc"
 
-
-
 for MLD_algo in "ECCO-MLD" "RHO-03-MLD"; do
-
 
     raw_dir="data/ECCO/processed_0p50deg_${MLD_algo}"
     remapped_dir="data/ECCO/processed_0p25deg_${MLD_algo}"

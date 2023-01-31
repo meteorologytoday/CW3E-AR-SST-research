@@ -3,6 +3,7 @@ import netCDF4
 import vorticity_tools, advection_tools
 from buoyancy_nonlinear import TS2rho, TS2b
 import earth_constants as ec
+import calculus_tools
 #from buoyancy_linear import TS2rho
 
 default_fill_value = 1e20
@@ -37,6 +38,33 @@ def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
     
     return MLNz
 
+
+def evalAtMLD_W(fi, h, z_W, mask=None, fill_value=default_fill_value):
+  
+    Nzp1, Ny, Nx = fi.shape
+
+    if mask is None:
+        mask = np.ones((Ny, Nx), dtype=np.int32)
+
+    fo = np.zeros((Ny, Nx))
+    Nz_h = detectMLNz(h, z_W, mask=mask)
+    
+    dz_T = z_W[:-1] - z_W[1:]
+
+    for j in range(Ny):
+        for i in range(Nx):
+            
+            if mask[j, i] == 0:
+                fo[j, i] = fill_value
+            
+            else:
+                
+                _Nz = Nz_h[j, i]
+                _h = h[j, i]
+
+                fo[j, i] = fi[_Nz+1, j, i] + (fi[_Nz, j, i] - fi[_Nz+1, j, i]) / dz_T[_Nz] * (- _h - z_W[_Nz+1])
+   
+    return fo
 
 
 def evalAtMLD_T(fi, h, z_W, mask=None, fill_value=default_fill_value):
@@ -232,8 +260,9 @@ def processECCO(
 
     Nz_bot = np.sum(mask3D, axis=0)
 
-    print("Compute density")    
+    print("Compute density and buoyancy") 
     rho = TS2rho(TEMP, SALT)
+    b   = TS2b(TEMP, SALT)
 
     print("Compute mixed-layer depth")    
     # compute mixed-layer depth
@@ -264,12 +293,20 @@ def processECCO(
     
     V_g = np.zeros((Nt, Ny, Nx))
     U_g = np.zeros((Nt, Ny, Nx))
+    
+    dTdz_b = np.zeros((Nt, Ny, Nx))
+    dSdz_b = np.zeros((Nt, Ny, Nx))
+    dUdz_b = np.zeros((Nt, Ny, Nx))
+    dVdz_b = np.zeros((Nt, Ny, Nx))
+    N2_b   = np.zeros((Nt, Ny, Nx))
 
+
+    print("Compute needed variables...")    
     for t in range(Nt):
 
         if input_filename_MLD == "":
             MLD[t, :, :] = findMLD_rho(rho[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=MLD_dev)
-
+    
         MLT[t, :, :] = computeMLMean(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         MLS[t, :, :] = computeMLMean(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         MLU[t, :, :] = computeMLMean(UVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
@@ -295,6 +332,21 @@ def processECCO(
         V_g[t, :, :] =   ec.g0 / f_co * dSSHdx
         U_g[t, :, :] = - ec.g0 / f_co * dSSHdy
 
+
+        dTdz = calculus_tools.W_ddz_T(TEMP[t, :, :, :], z_T=z_T)
+        dSdz = calculus_tools.W_ddz_T(SALT[t, :, :, :], z_T=z_T)
+        dUdz = calculus_tools.W_ddz_T(UVEL[t, :, :, :], z_T=z_T)
+        dVdz = calculus_tools.W_ddz_T(VVEL[t, :, :, :], z_T=z_T)
+        N2   = calculus_tools.W_ddz_T(b[t, :, :, :], z_T=z_T)
+        
+        dTdz_b[t, :, :] = evalAtMLD_W(dTdz, MLD[t, :, :], z_W, mask=mask)
+        dSdz_b[t, :, :] = evalAtMLD_W(dSdz, MLD[t, :, :], z_W, mask=mask)
+        dUdz_b[t, :, :] = evalAtMLD_W(dUdz, MLD[t, :, :], z_W, mask=mask)
+        dVdz_b[t, :, :] = evalAtMLD_W(dVdz, MLD[t, :, :], z_W, mask=mask)
+        N2_b[t, :, :]   = evalAtMLD_W(N2,   MLD[t, :, :], z_W, mask=mask)
+        
+
+
     output_vars = {
         'MLD'     : MLD,
         'MLT'     : MLT,
@@ -315,6 +367,11 @@ def processECCO(
         'dMLSdy'  : dMLSdy,
         'dMLDdx'  : dMLDdx,
         'dMLDdy'  : dMLDdy,
+        'dTdz_b'  : dTdz_b,
+        'dSdz_b'  : dSdz_b,
+        'dUdz_b'  : dUdz_b,
+        'dVdz_b'  : dVdz_b,
+        'N2_b'    : N2_b,
     }
 
     print("Writing output file: ", output_filename)

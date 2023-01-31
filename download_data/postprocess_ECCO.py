@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser(
                     description = 'Postprocess ECCO data (Mixed-Layer integrated).',
 )
 
-parser.add_argument('--MLD-method', required=True, help="If set then use ECCO MLD instead.", type=str)
+parser.add_argument('--MLD-method', required=True, help="If set then use ECCO MLD instead.", type=str, choices=["RHO", "ECCO"])
 args = parser.parse_args()
 print(args)
 
