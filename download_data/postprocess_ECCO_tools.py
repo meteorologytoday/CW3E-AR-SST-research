@@ -299,6 +299,9 @@ def processECCO(
     dUdz_b = np.zeros((Nt, Ny, Nx))
     dVdz_b = np.zeros((Nt, Ny, Nx))
     N2_b   = np.zeros((Nt, Ny, Nx))
+    
+    lapT   = np.zeros((Nt, Ny, Nx))
+    lapS   = np.zeros((Nt, Ny, Nx))
 
 
     print("Compute needed variables...")    
@@ -345,7 +348,15 @@ def processECCO(
         dVdz_b[t, :, :] = evalAtMLD_W(dVdz, MLD[t, :, :], z_W, mask=mask)
         N2_b[t, :, :]   = evalAtMLD_W(N2,   MLD[t, :, :], z_W, mask=mask)
         
+        _lapT   = np.zeros((Nz, Ny, Nx))
+        _lapS   = np.zeros((Nz, Ny, Nx))
 
+        for k in range(Nz):
+            _lapT[k, :, :] = advection_tools.calLaplacian(TEMP[t, k, :, :], lat, lon, periodoc_lon=False, mask=mask)
+            _lapS[k, :, :] = advection_tools.calLaplacian(SALT[t, k, :, :], lat, lon, periodoc_lon=False, mask=mask)
+
+        lapT[t, :, :] = computeMLMean(_lapT, MLD[t, :, :], z_W, mask=mask)
+        lapS[t, :, :] = computeMLMean(_lapS, MLD[t, :, :], z_W, mask=mask)
 
     output_vars = {
         'MLD'     : MLD,
@@ -372,6 +383,8 @@ def processECCO(
         'dUdz_b'  : dUdz_b,
         'dVdz_b'  : dVdz_b,
         'N2_b'    : N2_b,
+        'lapT'    : lapT,
+        'lapS'    : lapS,
     }
 
     print("Writing output file: ", output_filename)

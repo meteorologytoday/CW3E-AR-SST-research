@@ -4,7 +4,7 @@ import netCDF4
 from datetime import (datetime, timedelta, timezone)
 import traceback
 import anomalies
-import date_tools, fmon_tools, domain_tools, NK_tools
+import date_tools, fmon_tools, domain_tools, NK_tools, KPP_tools, watertime_tools
 import earth_constants as ec
 from pathlib import Path
 import argparse
@@ -49,7 +49,7 @@ if total_days <= 0:
 
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "mtpr", "mer", "mvimd", "t2m", "u10", "v10", "vort10", "curltau", 'EkmanAdv']
 ORA5_varnames = ["MLD", "db", "dT"]
-ECCO_varnames = ["MLD", "dS", "dT", "db", "dMLTdx", "dMLTdy", "MLU", "MLV", "U_g", "V_g", 'w_b', 'dMLDdx', 'dMLDdy']
+ECCO_varnames = ["MLD", "dS", "dT", "db", "dMLTdx", "dMLTdy", "MLU", "MLV", "U_g", "V_g", 'w_b', 'dMLDdx', 'dMLDdy', 'dTdz_b', 'dUdz_b', 'dVdz_b', 'N2_b']
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -70,7 +70,14 @@ lon = None
 wgt = None
 f_co = None
 
-computed_vars = ['U', 'db', 'dT', 'hdb', 'dTdt', 'dhdt', 'w_deepen', 'dTdt_deepen', 'net_sfc_hf', 'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf', 'dTdt_no_sfchf', 'ent_Ekman', 'w_Ekman', 'EkmanAdv_adj', 'ent_ADV', 'geo_ADV', 'ageo_ADV', 'ttl_ADV', 'ent_slope']
+computed_vars = [
+        'U', 'db', 'dT', 'hdb', 'dTdt', 'dhdt',
+        'w_deepen', 'dTdt_deepen', 'net_sfc_hf',
+        'net_conv_wv', 'sfhf_wosw', 'pme', 'dTdt_sfchf',
+        'dTdt_no_sfchf', 'ent_Ekman', 'w_Ekman', 'EkmanAdv_adj',
+        'ent_ADV', 'geo_ADV', 'ageo_ADV', 'ttl_ADV', 'ent_slope',
+        'vdiff_b', 'kappa_b',
+]
 
 ts = { varname : np.zeros((total_days,), dtype=np.float32) 
     for varname in (ERA5_varnames + ECCO_varnames + computed_vars) 
@@ -115,6 +122,10 @@ def magicalExtension(_data):
     _data['ent_ADV'] = - _data["dT"] * _data["w_b"] / _data["MLD"]
 
     _data['ent_slope'] = - ( _data["MLU"] * _data['dMLDdx'] + _data["MLV"] * _data['dMLDdy'] ) * _data['dT'] / _data['MLD']
+    
+
+    _data['kappa_b'] = KPP_tools.calKappa(_data['N2_b'], _data['dUdz_b'], _data['dVdz_b'])
+    _data['vdiff_b'] = - _data['kappa_b'] * _data['dTdz_b'] / _data['MLD'] 
  
 
 with netCDF4.Dataset(args.mask, "r") as ds:
@@ -123,6 +134,9 @@ with netCDF4.Dataset(args.mask, "r") as ds:
     landsea_mask = np.ma.array(ds.variables["mask"][:], keep_mask=False)  # 1=ocean, 0=land
     mask = (1 - landsea_mask).astype(bool) # in masked_array, unused grid are denoted with "true"
     #print("Sum of mask (): ", np.sum(mask.mask))
+
+ditch_this_wateryear = np.nan
+current_wateryear = np.nan
 
 for d, _t in enumerate(t_vec):
         
@@ -137,6 +151,23 @@ for d, _t in enumerate(t_vec):
         
     else:
 
+
+        if np.isfinite(ditch_this_wateryear):
+
+            if ditch_this_wateryear == current_wateryear:
+                print("Ditch this wateryear: ", _t)
+                continue
+
+            else:
+                current_wateryear = np.nan
+                ditch_this_wateryear = np.nan
+
+        if np.isnan(current_wateryear):
+
+            current_wateryear = watertime_tools.getWateryear(_t)
+            ditch_this_wateryear = np.nan
+
+        
         # Load ERA5 data
         for i, varname in enumerate(ERA5_varnames):
 
@@ -342,6 +373,7 @@ for d, _t in enumerate(t_vec):
     if not I_have_all_data_for_today:
 
         print("Missing data for date: ", _t)
+        ditch_this_wateryear = current_wateryear
         continue
 
     # Add other vairables inside
@@ -385,7 +417,7 @@ ii=0
 for i, missing_date in enumerate(missing_dates):
     if needed_missing_dates[i]:
         ii+=1
-        print("[%d] Missing date needed: %s" % (ii, missing_date.strftime("%Y-%m-%d"),))
+        #print("[%d] Missing date needed: %s" % (ii, missing_date.strftime("%Y-%m-%d"),))
 
 
 print("Original year range: %d-%d (%d years)." % (args.beg_year, args.end_year, args.end_year - args.beg_year + 1, ))
