@@ -43,7 +43,7 @@ class JOB:
 
         time_now_str = "%04d-%02d-%02d" % (y, m, d)
 
-        _tmp = ECCO_helper.getECCOFilename("G_total", "DAILY", self.t)
+        _tmp = ECCO_helper.getECCOFilename("G_ttl", "DAILY", self.t)
         output_filename = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
 
         dir_name = os.path.dirname(output_filename)

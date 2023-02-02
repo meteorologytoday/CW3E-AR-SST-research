@@ -1,7 +1,7 @@
 
 import xarray as xr
 import ECCO_helper
-
+import ecco_v4_py as ecco
 
 import numpy as np
 import netCDF4
@@ -9,6 +9,9 @@ import vorticity_tools, advection_tools
 from buoyancy_nonlinear import TS2rho, TS2b
 import earth_constants as ec
 import calculus_tools
+
+from datetime import (datetime, timedelta)
+
 #from buoyancy_linear import TS2rho
 
 default_fill_value = 1e20
@@ -26,10 +29,12 @@ def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
     Ny, Nx = h.shape
     Nz = len(z_W) - 1
     MLNz = np.zeros((Ny, Nx), dtype=np.int32)
-   
+
     for j in range(Ny):
         for i in range(Nx):
-        
+
+            print(mask.size)        
+            print(mask[j, i])        
             if mask[j, i] == 0:
                 MLNz[j, i] = fill_value
 
@@ -152,18 +157,12 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
     for j in range(Ny):
         for i in range(Nx):
 
-#            print("(j, i) = (%d, %d)" % (j, i))
-
             if mask[j, i] == 0:
                 MLD[j, i] = fill_value
                 continue 
 
             SSrho = rho[0, j, i]
             rho_threshold = SSrho + dev
-
-            #print("SSrho = ", SSrho)
-            #print("dev = ", dev)
-            #print("rho_threshold = ", rho_threshold)
 
             _Nz_bot = Nz_bot[j, i]
             for k in range(_Nz_bot):
@@ -186,88 +185,99 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
 def processECCO(
     target_datetime,
     output_filename,
+    MLD_dev = 0.03,
 ):
 
-
     print("Target datetime: ", target_datetime)
+    print("Output filename: ", output_filename)
 
     beg_datetime = target_datetime - timedelta(days=1)
 
-    snp_varnames = ["THETA", "SALINITY"]
-    ave_varnames = ["MXLDEPTH"]
+    snp_varnames = ["THETA", "SALT"]
+    #ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff"]
+    ave_varnames = ["MXLDEPTH", ]
 
-    ECCO_helper.loadECCOData_continuous(
+    ds = ECCO_helper.loadECCOData_continuous(
+        beg_datetime = beg_datetime,
+        ndays = 1,
         snp_varnames = snp_varnames,
         ave_varnames = ave_varnames,
     )
 
+    xgcm_grid = ecco.get_llc_grid(ds)
+    ecco_grid = ECCO_helper.getECCOGrid()
+    
+    Nt, Nl, Nz, Nx, Ny = (ds.dims['time'], ds.dims['tile'], ds.dims['k'], ds.dims['j'], ds.dims['i'])
+  
+    if Nt != 1:
+        raise Exception("Too many records. I only need one.")
+ 
+    Zl = ecco_grid.Zl.load()
+    Zu = ecco_grid.Zu.load()
+
+    z_W = np.zeros((len(Zl)+1,),)
+
+
+    z_W[:-1] = Zl
+    z_W[-1] = Zu[-1]
+    
+    z_T = (z_W[:-1] + z_W[1:]) / 2.0
+
+ 
+    sample2D_snp = ds.THETA_snp[:, :, 0, :, :]
+
+    MLD_snp = xr.zeros_like(sample2D_snp)
+    MLT_snp = xr.zeros_like(sample2D_snp)
+    MLS_snp = xr.zeros_like(sample2D_snp)
+
+    rho_snp = TS2rho(ds.THETA_snp, ds.SALT_snp)
+    
+    print(ds.THETA_snp)
+
+    mask   = [ ds.THETA_snp[0, l, :, :, :].isnull().rename('mask').astype('i4') for l in range(Nl) ]
+    mask2D = [ mask[l][0, :, :] for l in range(Nl) ]
+
+    print(mask[0])
+
+    Nz_bot = [ mask[l].sum(dim='k').rename('Nz_bot') for l in range(Nl) ]
+
+    print(Nz_bot[0])
+    for s in range(2):
+        for l in range(Nl):
+            MLD_snp[s, l, :, :] = findMLD_rho(
+                rho_snp[s, l, :, :, :],
+                z_T,
+                mask=mask2D[l],
+                Nz_bot=Nz_bot[l],
+                dev=MLD_dev
+            )
+
+    print(rho_snp)
+ 
     # 1. convert T and S to density
     # 2. Find the mixed-layer depth
     # 3. Compute mixed-layer temperature
     # 4. Compute mixed-layer salinity
     # 5. Output file.
 
-    
-    with netCDF4.Dataset(input_filename_TS, "r") as ds:
-        z_T = ds.variables[varname_z_T][:]
-        z_W_tmp = ds.variables[varname_z_W][:, :]  # (z_T, nv=2)
 
-        z_W = np.zeros((len(z_T)+1,))
-        z_W[:-1] = z_W_tmp[:, 0]
-        z_W[-1] = z_W_tmp[-1, 1]
+    #f_co = 2 * ec.Omega * np.sin(lat * np.pi / 180)
+    #f_co = f_co[:, None]
 
-
-        lat = ds.variables[varname_lat][:]
-        lon = ds.variables[varname_lon][:] % 360.0
-
-        lat_idx = (lat_b <= lat) & (lat <= lat_t)
-        lon_idx = (lon_l <= lon) & (lon <= lon_r)
-
-        lat = lat[lat_idx]
-        lon = lon[lon_idx]
-
-
-
-    with netCDF4.Dataset(input_filename_TS, "r") as ds:
-        TEMP = ds.variables[varname_TEMP][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-        SALT = ds.variables[varname_SALT][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-
-    with netCDF4.Dataset(input_filename_RHO, "r") as ds:
-        RHO    = ds.variables[varname_RHO][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-        dRHOdz = ds.variables[varname_dRHOdz][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-
-
-    with netCDF4.Dataset(input_filename_VEL, "r") as ds:
-        UVEL = ds.variables[varname_UVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-        VVEL = ds.variables[varname_VVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-        WVEL = ds.variables[varname_WVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
-
-    with netCDF4.Dataset(input_filename_SSH, "r") as ds:
-        SSH  = ds.variables[varname_SSH][:, lat_idx, lon_idx]  # (time, y, x)
-
-    if input_filename_MLD != "":
-        with netCDF4.Dataset(input_filename_MLD, "r") as ds:
-            MLD  = ds.variables[varname_MLD][:, lat_idx, lon_idx]  # (time, y, x)
-
-
-
-    f_co = 2 * ec.Omega * np.sin(lat * np.pi / 180)
-    f_co = f_co[:, None]
-
-    Nt, Nz, Ny, Nx = TEMP.shape
-    print("Shape = (%d, %d, %d, %d)" % (Nt, Nz, Ny, Nx))
+    #Nt, Nz, Ny, Nx = TEMP.shape
+    #print("Shape = (%d, %d, %d, %d)" % (Nt, Nz, Ny, Nx))
                 
-    mask = 1 - TEMP[0, 0, :, :].mask.astype(np.int32)
-    mask3D = 1 - TEMP[0, :, :, :].mask.astype(np.int32)
+    #mask = 1 - TEMP[0, 0, :, :].mask.astype(np.int32)
+    #mask3D = 1 - TEMP[0, :, :, :].mask.astype(np.int32)
 
-    Nz_bot = np.sum(mask3D, axis=0)
+    #Nz_bot = np.sum(mask3D, axis=0)
 
     """
     print("Compute density and buoyancy") 
     rho = TS2rho(TEMP, SALT)
     b   = TS2b(TEMP, SALT)
     """
-
+    """
     N2 = - ec.g0 / RHO_CONST * dRHOdz
      
 
@@ -413,30 +423,18 @@ def processECCO(
 
             _var = ds.createVariable(k, np.float32, ('time', 'lat', 'lon'), fill_value=fill_value)
             _var[:, :, :] = d
-
+    """
 
 
 if __name__ == "__main__" : 
 
     print("*** This is for testing ***") 
-    input_filename_TS ="data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4/OCEAN_TEMPERATURE_SALINITY_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
-    input_filename_SSH ="data/ECCO/ECCO_L4_SSH_05DEG_DAILY_V4R4B/SEA_SURFACE_HEIGHT_day_mean_2015-12-10_ECCO_V4r4b_latlon_0p50deg.nc"
-    input_filename_VEL ="data/ECCO/ECCO_L4_OCEAN_VEL_05DEG_DAILY_V4R4/OCEAN_VELOCITY_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
-    input_filename_RHO ="data/ECCO/ECCO_L4_DENS_STRAT_PRESS_05DEG_DAILY_V4R4/OCEAN_DENS_STRAT_PRESS_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
 
-    output_filename = "test_convert_ECCO5.nc"
-
-    print("Input  file TS  : %s" % (input_filename_TS,))
-    print("Input  file RHO : %s" % (input_filename_RHO,))
-    print("Input  file VEL : %s" % (input_filename_VEL,))
-    print("Input  file SSH : %s" % (input_filename_SSH,))
-    print("Output file: %s" % (output_filename,)) 
+    target_datetime = datetime(2017, 12, 26)
+    output_filename = "data/ECCO_LLC/%s/%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)
 
     processECCO(
-        input_filename_TS,
-        input_filename_RHO,
-        input_filename_VEL,
-        input_filename_SSH,
+        target_datetime,
         output_filename,
     ) 
     

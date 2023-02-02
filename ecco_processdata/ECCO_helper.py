@@ -49,8 +49,14 @@ ECCO_mapping = {
 
     "POSTPROC_G_TERMS" : {
         "fileprefix": "G_TERMS",
-        "varnames": ["G_total", "G_advection", "G_forcing", "G_diffusion", "G_sum", "G_residue"],
+        "varnames": ["G_ttl", "G_hadv", "G_vadv", "G_forcing", "G_hdiff", "G_vdiff", "G_sum", "G_res"],
     },
+
+    "POSTPROC_MXLANA" : {
+        "fileprefix": "MXLANA",
+        "varnames": ["MLT", "dMLTdT"],
+    },
+
 
 }
 
@@ -214,7 +220,7 @@ def computeTendency(target_datetime, grid=None):
     vol = (ecco_grid.rA*ecco_grid.drF*ecco_grid.hFacC).transpose('tile','k','j','i')
 
     sTHETA = ds.THETA_snp * (1+ds.ETAN_snp/ecco_grid.Depth)
-    G_total = xgcm_grid.diff(sTHETA, 'T', boundary='fill', fill_value=0.0)/delta_t
+    G_ttl = xgcm_grid.diff(sTHETA, 'T', boundary='fill', fill_value=0.0)/delta_t
 
     ADVxy_diff = xgcm_grid.diff_2d_vector({'X' : ds.ADVx_TH, 'Y' : ds.ADVy_TH}, boundary = 'fill')
 
@@ -223,7 +229,8 @@ def computeTendency(target_datetime, grid=None):
     ADVr_TH = ds.ADVr_TH.transpose('time','tile','k_l','j','i')
     adv_vConvH = xgcm_grid.diff(ADVr_TH, 'Z', boundary='fill')
 
-    G_advection = (adv_hConvH + adv_vConvH) / vol
+    G_hadv = adv_hConvH / vol
+    G_vadv = adv_vConvH / vol
 
 
     DFxyE_diff = xgcm_grid.diff_2d_vector({'X' : ds.DFxE_TH, 'Y' : ds.DFyE_TH}, boundary = 'fill')
@@ -238,8 +245,8 @@ def computeTendency(target_datetime, grid=None):
     # Convergence of vertical diffusion (degC m^3/s)
     dif_vConvH = xgcm_grid.diff(DFrE_TH, 'Z', boundary='fill') + xgcm_grid.diff(DFrI_TH, 'Z', boundary='fill')
 
-    G_diffusion = (dif_hConvH + dif_vConvH) / vol
-
+    G_hdiff = dif_hConvH / vol
+    G_vdiff = dif_vConvH / vol
 
     Z = ecco_grid.Z.load()
     RF = np.concatenate([ecco_grid.Zp1.values[:-1],[np.nan]])
@@ -270,16 +277,18 @@ def computeTendency(target_datetime, grid=None):
 
     G_forcing = forcH / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
 
-    G_sum = G_advection + G_forcing + G_diffusion
-    G_residue = G_sum - G_total
+    G_sum = G_hadv + G_vadv + G_hdiff + G_vdiff + G_forcing
+    G_res = G_sum - G_ttl
 
     result = {
-        "G_total"     : G_total,
-        "G_advection" : G_advection,
-        "G_forcing"   : G_forcing,
-        "G_diffusion" : G_diffusion,
-        "G_sum" : G_sum,
-        "G_residue" : G_residue,
+        "G_ttl"     : G_ttl,
+        "G_hadv"    : G_hadv,
+        "G_vadv"    : G_vadv,
+        "G_forcing" : G_forcing,
+        "G_hdiff"   : G_hdiff,
+        "G_vdiff"   : G_vdiff,
+        "G_sum"     : G_sum,
+        "G_res"     : G_res,
     }
 
 
