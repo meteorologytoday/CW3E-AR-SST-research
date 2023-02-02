@@ -28,6 +28,7 @@ input_dir_TS = "data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4"
 input_dir_VEL = "data/ECCO/ECCO_L4_OCEAN_VEL_05DEG_DAILY_V4R4"
 input_dir_SSH = "data/ECCO/ECCO_L4_SSH_05DEG_DAILY_V4R4B"
 input_dir_MLD = "data/ECCO/ECCO_L4_MIXED_LAYER_DEPTH_05DEG_DAILY_V4R4"
+input_dir_RHO = "data/ECCO/ECCO_L4_DENS_STRAT_PRESS_05DEG_DAILY_V4R4"
 
 
 if args.MLD_method == "ECCO":
@@ -41,6 +42,7 @@ elif args.MLD_method == "RHO":
 input_filename_format_TS = "OCEAN_TEMPERATURE_SALINITY_day_mean_%s_ECCO_V4r4_latlon_0p50deg.nc"
 input_filename_format_VEL = "OCEAN_VELOCITY_day_mean_%s_ECCO_V4r4_latlon_0p50deg.nc"
 input_filename_format_SSH = "SEA_SURFACE_HEIGHT_day_mean_%s_ECCO_V4r4b_latlon_0p50deg.nc"
+input_filename_format_RHO = "OCEAN_DENS_STRAT_PRESS_day_mean_%s_ECCO_V4r4_latlon_0p50deg.nc"
 
 # This is only used if ECCO mixed layer depth is used
 input_filename_format_MLD = "OCEAN_MIXED_LAYER_DEPTH_day_mean_%s_ECCO_V4r4_latlon_0p50deg.nc"
@@ -96,6 +98,7 @@ class JOB:
 
             postprocess_ECCO_tools.processECCO(
                 input_filename_TS,
+                input_filename_RHO,
                 input_filename_VEL,
                 input_filename_SSH,
                 output_filename_0p50deg,

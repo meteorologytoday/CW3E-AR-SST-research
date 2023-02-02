@@ -9,6 +9,10 @@ import calculus_tools
 default_fill_value = 1e20
 default_fill_value_int = -1
 
+# RHO_CONST number is read from
+# https://ecco-v4-python-tutorial.readthedocs.io/Thermal_wind.html#Viewing-and-Plotting-Density
+RHO_CONST = 1029.0
+
 def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
 
     if mask is None:
@@ -176,11 +180,14 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
 
 def processECCO(
     input_filename_TS,
+    input_filename_RHO,
     input_filename_VEL,
     input_filename_SSH,
     output_filename,
     varname_TEMP = "THETA",
     varname_SALT = "SALT",
+    varname_RHO  = "RHOAnoma",
+    varname_dRHOdz = "DRHODR",
     varname_UVEL = "EVEL",
     varname_VVEL = "NVEL",
     varname_WVEL = "WVEL",
@@ -235,6 +242,11 @@ def processECCO(
         TEMP = ds.variables[varname_TEMP][:, :, lat_idx, lon_idx]  # (time, z, y, x)
         SALT = ds.variables[varname_SALT][:, :, lat_idx, lon_idx]  # (time, z, y, x)
 
+    with netCDF4.Dataset(input_filename_RHO, "r") as ds:
+        RHO    = ds.variables[varname_RHO][:, :, lat_idx, lon_idx]  # (time, z, y, x)
+        dRHOdz = ds.variables[varname_dRHOdz][:, :, lat_idx, lon_idx]  # (time, z, y, x)
+
+
     with netCDF4.Dataset(input_filename_VEL, "r") as ds:
         UVEL = ds.variables[varname_UVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
         VVEL = ds.variables[varname_VVEL][:, :, lat_idx, lon_idx]  # (time, z, y, x)
@@ -260,9 +272,14 @@ def processECCO(
 
     Nz_bot = np.sum(mask3D, axis=0)
 
+    """
     print("Compute density and buoyancy") 
     rho = TS2rho(TEMP, SALT)
     b   = TS2b(TEMP, SALT)
+    """
+
+    N2 = - ec.g0 / RHO_CONST * dRHOdz
+     
 
     print("Compute mixed-layer depth")    
     # compute mixed-layer depth
@@ -308,7 +325,7 @@ def processECCO(
     for t in range(Nt):
 
         if input_filename_MLD == "":
-            MLD[t, :, :] = findMLD_rho(rho[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=MLD_dev)
+            MLD[t, :, :] = findMLD_rho(RHO[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=MLD_dev)
     
         MLT[t, :, :] = computeMLMean(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         MLS[t, :, :] = computeMLMean(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
@@ -340,13 +357,12 @@ def processECCO(
         dSdz = calculus_tools.W_ddz_T(SALT[t, :, :, :], z_T=z_T)
         dUdz = calculus_tools.W_ddz_T(UVEL[t, :, :, :], z_T=z_T)
         dVdz = calculus_tools.W_ddz_T(VVEL[t, :, :, :], z_T=z_T)
-        N2   = calculus_tools.W_ddz_T(b[t, :, :, :], z_T=z_T)
         
         dTdz_b[t, :, :] = evalAtMLD_W(dTdz, MLD[t, :, :], z_W, mask=mask)
         dSdz_b[t, :, :] = evalAtMLD_W(dSdz, MLD[t, :, :], z_W, mask=mask)
         dUdz_b[t, :, :] = evalAtMLD_W(dUdz, MLD[t, :, :], z_W, mask=mask)
         dVdz_b[t, :, :] = evalAtMLD_W(dVdz, MLD[t, :, :], z_W, mask=mask)
-        N2_b[t, :, :]   = evalAtMLD_W(N2,   MLD[t, :, :], z_W, mask=mask)
+        N2_b[t, :, :]   = evalAtMLD_T(N2[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
         
         _lapT   = np.zeros((Nz, Ny, Nx))
         _lapS   = np.zeros((Nz, Ny, Nx))
@@ -413,19 +429,22 @@ def processECCO(
 if __name__ == "__main__" : 
 
     print("*** This is for testing ***") 
-    input_filename_TS ="data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4/OCEAN_TEMPERATURE_SALINITY_day_mean_1997-12-10_ECCO_V4r4_latlon_0p50deg.nc"
-    input_filename_SSH ="data/ECCO/ECCO_L4_SSH_05DEG_DAILY_V4R4B/SEA_SURFACE_HEIGHT_day_mean_1997-12-10_ECCO_V4r4b_latlon_0p50deg.nc"
-    input_filename_VEL ="data/ECCO/ECCO_L4_OCEAN_VEL_05DEG_DAILY_V4R4/OCEAN_VELOCITY_day_mean_1997-12-10_ECCO_V4r4_latlon_0p50deg.nc"
+    input_filename_TS ="data/ECCO/ECCO_L4_TEMP_SALINITY_05DEG_DAILY_V4R4/OCEAN_TEMPERATURE_SALINITY_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
+    input_filename_SSH ="data/ECCO/ECCO_L4_SSH_05DEG_DAILY_V4R4B/SEA_SURFACE_HEIGHT_day_mean_2015-12-10_ECCO_V4r4b_latlon_0p50deg.nc"
+    input_filename_VEL ="data/ECCO/ECCO_L4_OCEAN_VEL_05DEG_DAILY_V4R4/OCEAN_VELOCITY_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
+    input_filename_RHO ="data/ECCO/ECCO_L4_DENS_STRAT_PRESS_05DEG_DAILY_V4R4/OCEAN_DENS_STRAT_PRESS_day_mean_2015-12-10_ECCO_V4r4_latlon_0p50deg.nc"
 
     output_filename = "test_convert_ECCO5.nc"
 
     print("Input  file TS  : %s" % (input_filename_TS,))
+    print("Input  file RHO : %s" % (input_filename_RHO,))
     print("Input  file VEL : %s" % (input_filename_VEL,))
     print("Input  file SSH : %s" % (input_filename_SSH,))
     print("Output file: %s" % (output_filename,)) 
 
     processECCO(
         input_filename_TS,
+        input_filename_RHO,
         input_filename_VEL,
         input_filename_SSH,
         output_filename,
