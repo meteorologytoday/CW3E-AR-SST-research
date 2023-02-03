@@ -321,7 +321,14 @@ def processECCO(
 
     # Additional diagnostic variables 
     ML_ave["MLG_adv"][:, :, :, :] = ML_ave["MLG_hadv"] + ML_ave["MLG_vadv"]
-    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt"] - ( ML_ave["MLG_ent"] + ML_ave["MLG_hadv"] + ML_ave["MLG_vadv"] + ML_ave["MLG_hdiff"] + ML_ave["MLG_vdiff"] + ML_ave["MLG_forcing"] )
+    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt"] - (
+              ML_ave["MLG_ent"] 
+            + ML_ave["MLG_hadv"]
+            + ML_ave["MLG_vadv"]
+            + ML_ave["MLG_hdiff"]
+            + ML_ave["MLG_vdiff"]
+            + ML_ave["MLG_forcing"]
+    )
 
     ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
 
