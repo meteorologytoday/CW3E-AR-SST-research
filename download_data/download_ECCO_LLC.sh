@@ -5,9 +5,8 @@ download_dir=./data/ECCO_LLC
 
 start_date="1996-09-30T00:00:00Z"
 #end_date="1997-09-30T00:00:00Z"
-
-start_date="2006-12-25T00:00:00Z"
-end_date="2018-01-01T00:00:00Z"
+end_date="2007-01-01T00:00:00Z"
+#end_date="2018-01-02T00:00:00Z"
 
 
 datasets_LLC=(
@@ -31,7 +30,7 @@ for dataset in "${datasets_LLC[@]}"; do
     echo "# Start date: $start_date"
     echo "# End   date: $end_date"
 
-    podaac-data-subscriber          \
+    podaac-data-downloader          \
         -c $dataset                 \
         -d $download_dir/$dataset   \
         --start-date $start_date    \

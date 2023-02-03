@@ -192,6 +192,7 @@ def loadECCOData_continuous(
             
             full_list.append(_tmp)
 
+
     ds = xr.merge(full_list)
     ds.time_snp.attrs['c_grid_axis_shift'] = - 0.5
 
@@ -291,6 +292,10 @@ def computeTendency(target_datetime, grid=None):
         "G_res"     : G_res,
     }
 
+
+    for k, v in result.items():
+        
+        result[k] = v.transpose('time', 'k', 'tile', 'j', 'i')
 
 
     return result

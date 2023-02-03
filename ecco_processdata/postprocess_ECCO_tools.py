@@ -1,4 +1,6 @@
 
+from pathlib import Path
+import os.path
 import xarray as xr
 import ECCO_helper
 import ecco_v4_py as ecco
@@ -14,7 +16,7 @@ from datetime import (datetime, timedelta)
 
 #from buoyancy_linear import TS2rho
 
-default_fill_value = 1e20
+default_fill_value = np.nan
 default_fill_value_int = -1
 
 # RHO_CONST number is read from
@@ -33,8 +35,6 @@ def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
     for j in range(Ny):
         for i in range(Nx):
 
-            print(mask.size)        
-            print(mask[j, i])        
             if mask[j, i] == 0:
                 MLNz[j, i] = fill_value
 
@@ -43,7 +43,7 @@ def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
                 z = - h[j, i]
                 for k in range(Nz):
 
-                    if z_W[k] >= z >= z_W[k+1]:   # Using 2 equalities so that the last grid-box will include z = z_bottom
+                    if z_W[k] >= z and z >= z_W[k+1]:   # Using 2 equalities so that the last grid-box will include z = z_bottom
                         MLNz[j, i] = k
                         break
  
@@ -115,20 +115,22 @@ def computeMLMean(fi, h, z_W, mask=None, fill_value=default_fill_value):
 
     dz_T = z_W[:-1] - z_W[1:]
     fo = np.zeros((Ny, Nx))
+
     Nz_h = detectMLNz(h, z_W, mask=mask)
-    
+
     for j in range(Ny):
         for i in range(Nx):
            
 
             _Nz = Nz_h[j, i]
             
-#            print("(j, i) = (%d, %d); _Nz = %d" % (j, i, _Nz)) 
 
             if mask[j, i] == 0:
                 fo[j, i] = fill_value
 
             else:
+
+
                 _tmp = 0.0
                 if _Nz > 0:
                     _tmp += np.sum(dz_T[:_Nz] * fi[:_Nz, j, i])
@@ -165,6 +167,7 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
             rho_threshold = SSrho + dev
 
             _Nz_bot = Nz_bot[j, i]
+            
             for k in range(_Nz_bot):
                 
                 if rho[k, j, i] >= rho_threshold:
@@ -191,11 +194,11 @@ def processECCO(
     print("Target datetime: ", target_datetime)
     print("Output filename: ", output_filename)
 
-    beg_datetime = target_datetime - timedelta(days=1)
+    beg_datetime = target_datetime # - timedelta(days=1)
 
-    snp_varnames = ["THETA", "SALT"]
-    #ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff"]
-    ave_varnames = ["MXLDEPTH", ]
+    snp_varnames = ["THETA", "SALT", "ETAN"]
+    ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff"]
+    #ave_varnames = ["MXLDEPTH", ]
 
     ds = ECCO_helper.loadECCOData_continuous(
         beg_datetime = beg_datetime,
@@ -207,7 +210,12 @@ def processECCO(
     xgcm_grid = ecco.get_llc_grid(ds)
     ecco_grid = ECCO_helper.getECCOGrid()
     
-    Nt, Nl, Nz, Nx, Ny = (ds.dims['time'], ds.dims['tile'], ds.dims['k'], ds.dims['j'], ds.dims['i'])
+    sTHETA_snp = ds.THETA_snp * (1 + ds.ETAN_snp/ecco_grid.Depth)
+    sSALT_snp  = ds.SALT_snp  * (1 + ds.ETAN_snp/ecco_grid.Depth)
+
+    sTHETA_snp = sTHETA_snp.rename("sTHETA_snp")
+    
+    Nt, Nz, Nl, Nx, Ny = (ds.dims['time'], ds.dims['k'], ds.dims['tile'], ds.dims['j'], ds.dims['i'])
   
     if Nt != 1:
         raise Exception("Too many records. I only need one.")
@@ -224,36 +232,133 @@ def processECCO(
     z_T = (z_W[:-1] + z_W[1:]) / 2.0
 
  
-    sample2D_snp = ds.THETA_snp[:, :, 0, :, :]
+    sample2D_snp = ds.THETA_snp[:, 0, :, :, :]
+    sample2D_ave = ds.MXLDEPTH[:, :, :, :]
 
-    MLD_snp = xr.zeros_like(sample2D_snp)
-    MLT_snp = xr.zeros_like(sample2D_snp)
-    MLS_snp = xr.zeros_like(sample2D_snp)
+    ML_snp = {}
+    ML_ave = {}
 
-    rho_snp = TS2rho(ds.THETA_snp, ds.SALT_snp)
+    ML_snp_varnames = ["MLD_snp", "MLT_snp", "MLS_snp"]
+    ML_ave_varnames = ["dMLTdt", "MLG_ttl", "MLG_hadv", "MLG_vadv", "MLG_adv", "MLG_vdiff", "MLG_hdiff", "MLG_forcing"]
+
+    for varname in ML_snp_varnames:
+        ML_snp[varname] = xr.zeros_like(sample2D_snp).rename(varname)
+
+    for varname in ML_ave_varnames:
+        ML_ave[varname] = xr.zeros_like(sample2D_ave).rename(varname)
+
+ 
+    rho_snp = TS2rho(ds.THETA_snp, ds.SALT_snp).rename('rho_snp')
     
-    print(ds.THETA_snp)
-
-    mask   = [ ds.THETA_snp[0, l, :, :, :].isnull().rename('mask').astype('i4') for l in range(Nl) ]
+    mask   = [ ds.THETA_snp[0, :, l, :, :].notnull().rename('mask').astype('i4').to_numpy() for l in range(Nl) ]
     mask2D = [ mask[l][0, :, :] for l in range(Nl) ]
 
-    print(mask[0])
+    Nz_bot = [ np.sum(mask[l], axis=0) for l in range(Nl) ]
 
-    Nz_bot = [ mask[l].sum(dim='k').rename('Nz_bot') for l in range(Nl) ]
-
-    print(Nz_bot[0])
+    # Compute variable at the time_bnds
     for s in range(2):
         for l in range(Nl):
-            MLD_snp[s, l, :, :] = findMLD_rho(
-                rho_snp[s, l, :, :, :],
+
+            ML_snp["MLD_snp"][s, l, :, :] = findMLD_rho(
+                rho_snp[s, :, l, :, :].to_numpy(),
                 z_T,
                 mask=mask2D[l],
                 Nz_bot=Nz_bot[l],
-                dev=MLD_dev
+                dev=MLD_dev,
             )
 
-    print(rho_snp)
+            ML_snp["MLT_snp"][s, l, :, :] = computeMLMean(
+                sTHETA_snp[s, :, l, :, :].to_numpy(),
+                ML_snp["MLD_snp"][s, l, :, :].to_numpy(),
+                z_W,
+                mask=mask2D[l]
+            )
+
+            ML_snp["MLS_snp"][s, l, :, :] = computeMLMean(
+                sSALT_snp[s, :, l, :, :].to_numpy(),
+                ML_snp["MLD_snp"][s, l, :, :].to_numpy(),
+                z_W,
+                mask=mask2D[l]
+            )
+
+    dt = 86400.0
+    #xgcm_grid.diff(ds.time_snp, 'T', boundary='fill', fill_value=np.nan).astype('f4') / 1e9 # nanosec to sec 
+   
+    ML_ave["dMLTdt"][0, :, :, :] = (ML_snp["MLT_snp"][1, :, :, :] - ML_snp["MLT_snp"][0, :, :, :]) / dt
+
+
+    # compute variable in the middle of time_bnds
+    MLD_0 = ML_snp["MLD_snp"][0, :, :, :].to_numpy()
+    MLD_1 = ML_snp["MLD_snp"][1, :, :, :].to_numpy()
+    for varname in ["G_ttl", "G_hadv", "G_vadv", "G_vdiff", "G_hdiff", "G_forcing"]:
+        ML_varname = "ML%s" % varname
+        for l in range(Nl):
+                
+            ML_ave[ML_varname][0, l, :, :] = computeMLMean(
+                ds[varname][0, :, l, :, :].to_numpy(),
+                MLD_1[l, :, :],
+                z_W,
+                mask=mask2D[l]
+            )
+
+    # Compute entrainment term explicitly
+    ML_ave["MLG_ent"] = xr.zeros_like(sample2D_ave).rename("MLG_ent") 
+    for l in range(Nl):
+            
+        sTHETA = sTHETA_snp[0, :, l, :, :].to_numpy()
+        ML_ave["MLG_ent"][0, l, :, :] = ( computeMLMean(
+            sTHETA,
+            MLD_1[l, :, :],
+            z_W,
+            mask=mask2D[l]
+        ) -  computeMLMean(
+            sTHETA,
+            MLD_0[l, :, :],
+            z_W,
+            mask=mask2D[l]
+        )) / dt
+
+
+    # Additional diagnostic variables 
+    ML_ave["MLG_adv"][:, :, :, :] = ML_ave["MLG_hadv"] + ML_ave["MLG_vadv"]
+    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt"] - ( ML_ave["MLG_ent"] + ML_ave["MLG_hadv"] + ML_ave["MLG_vadv"] + ML_ave["MLG_hdiff"] + ML_ave["MLG_vdiff"] + ML_ave["MLG_forcing"] )
+
+    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
+
+    MLU = np.zeros((Nt, Ny, Nx))
+    MLV = np.zeros((Nt, Ny, Nx))
+
+
+    dMLTdx = np.zeros((Nt, Ny, Nx))
+    dMLTdy = np.zeros((Nt, Ny, Nx))
+    dMLSdx = np.zeros((Nt, Ny, Nx))
+    dMLSdy = np.zeros((Nt, Ny, Nx))
+    dMLDdx = np.zeros((Nt, Ny, Nx))
+    dMLDdy = np.zeros((Nt, Ny, Nx))
  
+
+    output_data = []
+
+    for k, var in ML_ave.items():
+        output_data.append(var)
+
+    for var in output_data:
+        for attr in ["valid_min", "valid_max"]:
+            if attr in var.attrs:
+                del(var.attrs[attr])
+
+    ds_out = xr.merge(output_data, compat='override')
+
+
+    print("Output: ", output_filename)
+
+    dir_name = os.path.dirname(output_filename)
+    if not os.path.isdir(dir_name):
+        print("Create dir: %s" % (dir_name,))
+        Path(dir_name).mkdir(parents=True, exist_ok=True)
+
+
+    ds_out.to_netcdf(output_filename)
     # 1. convert T and S to density
     # 2. Find the mixed-layer depth
     # 3. Compute mixed-layer temperature
