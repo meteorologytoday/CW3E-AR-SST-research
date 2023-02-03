@@ -32,9 +32,22 @@ ECCO_mapping = {
         "varnames": ["MXLDEPTH",],
     },
 
+    
+    # oceQnet = EXFls + EXFlh - (EXFlwnet + EXFswnet)
+    # oceQsw = - EXFswnet
+
+    # EXFqnet = - oceQnet = EXFlwnet + EXFswnet - EXFlh - EXFhs
+    # TFLUX = surForcT + oceQsw + oceFreez + [PmEpR*SST]*Cp
+    # oceFWflx = [PmEpR]
+
+    # In our case where sea ice does not involve
+    # TFLUX = oceQsw + EXFhl + EXFhs - EXFlwnet + [PmEpR*SST]*Cp
+    #                                                  |
+    #                                                  +--> the loss/gain of ocean mass * c_p
+
     "HEAT_FLUX" : {
         "fileprefix" : "OCEAN_AND_ICE_SURFACE_HEAT_FLUX",
-        "varnames" : ["oceQsw", "TFLUX"],
+        "varnames" : ["oceQsw", "TFLUX", "EXFhs", "EXFhl", "EXFlwnet"],
     },
 
     "OCEAN_VEL" : {
@@ -49,7 +62,9 @@ ECCO_mapping = {
 
     "POSTPROC_G_TERMS" : {
         "fileprefix": "G_TERMS",
-        "varnames": ["G_ttl", "G_hadv", "G_vadv", "G_forcing", "G_hdiff", "G_vdiff", "G_sum", "G_res"],
+        "varnames": ["G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff",
+                     "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf",
+                     "G_sum", "G_res"],
     },
 
     "POSTPROC_MXLANA" : {
@@ -172,7 +187,7 @@ def loadECCOData_continuous(
                 raise Exception("File %s does not exist." % (fullpath,))
 
             new_varname = "%s_snp" % (varname,)
-            _tmp = xr.open_dataset(fullpath).rename({'time':'time_snp', varname : new_varname})
+            _tmp = xr.open_dataset(fullpath)[[varname,]].rename({'time':'time_snp', varname : new_varname})
 
             full_list.append(_tmp) 
  
@@ -188,7 +203,7 @@ def loadECCOData_continuous(
                 raise Exception("File %s does not exist." % (fullpath,))
 
 
-            _tmp = xr.open_dataset(fullpath)
+            _tmp = xr.open_dataset(fullpath)[[varname,]]
             
             full_list.append(_tmp)
 
@@ -204,7 +219,9 @@ def loadECCOData_continuous(
 # Reference: https://ecco-v4-python-tutorial.readthedocs.io/ECCO_v4_Heat_budget_closure.html
 def computeTendency(target_datetime, grid=None):
     snp_varnames = ["THETA", "ETAN"]
-    ave_varnames = [ "TFLUX", "oceQsw", "ADVx_TH", "ADVy_TH", "ADVr_TH", "DFxE_TH", "DFyE_TH", "DFrE_TH", "DFrI_TH", ] 
+    ave_varnames = [ 
+        "TFLUX", "oceQsw", "EXFlwnet", "EXFhl", "EXFhs",
+        "ADVx_TH", "ADVy_TH", "ADVr_TH", "DFxE_TH", "DFyE_TH", "DFrE_TH", "DFrI_TH", ] 
 
     ds = loadECCOData_continuous(
         beg_datetime = target_datetime,
@@ -268,24 +285,42 @@ def computeTendency(target_datetime, grid=None):
 
     # Change all fractions (ocean) to 1. land = 0
     mskC.values[mskC.values>0] = 1
-    forcH_subsurf = ((q1*(mskC==1)-q2*(mskC.shift(k=-1)==1))*ds.oceQsw).transpose('time','tile','k','j','i')
+    forcH_subsurf_sw = ((q1*(mskC==1)-q2*(mskC.shift(k=-1)==1))*ds.oceQsw).transpose('time','tile','k','j','i')
 
 
-    forcH_surf = ( (ds.TFLUX - (1-(q1[0]-q2[0]))*ds.oceQsw)
+    forcH_surf_sw = ( (q1[0]-q2[0]) * ds.oceQsw
               *mskC[0]).transpose('time','tile','j','i').assign_coords(k=0).expand_dims('k')
 
-    forcH = xr.concat([forcH_surf,forcH_subsurf[:,:,1:]], dim='k').transpose('time','tile','k','j','i')
+    forcH_sw = xr.concat([forcH_surf_sw,forcH_subsurf_sw[:,:,1:]], dim='k').transpose('time','tile','k','j','i')
 
-    G_forcing = forcH / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+    forcH_surf_nonsw_shape = (( ds.TFLUX * 0 + 1 )
+              *mskC[0]).transpose('time','tile','j','i').assign_coords(k=0).expand_dims('k')
+    forcH_subsurf_nonsw_shape = forcH_subsurf_sw * 0
 
-    G_sum = G_hadv + G_vadv + G_hdiff + G_vdiff + G_forcing
+    forcH_nonsw_shape = xr.concat([forcH_surf_nonsw_shape,forcH_subsurf_nonsw_shape[:,:,1:]], dim='k').transpose('time','tile','k','j','i')
+
+    
+    EXFfwf = ds.TFLUX - ds.oceQsw - ds.EXFhl - ds.EXFhs + ds.EXFlwnet
+
+    G_frc_sw  = forcH_sw                            / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+    G_frc_lw  = forcH_nonsw_shape * (- ds.EXFlwnet) / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+    G_frc_sh  = forcH_nonsw_shape * ds.EXFhs        / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+    G_frc_lh  = forcH_nonsw_shape * ds.EXFhl        / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+    G_frc_fwf = forcH_nonsw_shape * EXFfwf          / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
+
+
+    G_sum = G_hadv + G_vadv + G_hdiff + G_vdiff + G_frc_sw + G_frc_lw + G_frc_sh + G_frc_lh + G_frc_fwf
     G_res = G_sum - G_ttl
 
     result = {
         "G_ttl"     : G_ttl,
         "G_hadv"    : G_hadv,
         "G_vadv"    : G_vadv,
-        "G_forcing" : G_forcing,
+        "G_frc_sw"  : G_frc_sw,
+        "G_frc_lw"  : G_frc_lw,
+        "G_frc_sh"  : G_frc_sh,
+        "G_frc_lh"  : G_frc_lh,
+        "G_frc_fwf" : G_frc_fwf,
         "G_hdiff"   : G_hdiff,
         "G_vdiff"   : G_vdiff,
         "G_sum"     : G_sum,

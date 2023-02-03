@@ -197,8 +197,7 @@ def processECCO(
     beg_datetime = target_datetime # - timedelta(days=1)
 
     snp_varnames = ["THETA", "SALT", "ETAN"]
-    ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff"]
-    #ave_varnames = ["MXLDEPTH", ]
+    ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff", "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf"]
 
     ds = ECCO_helper.loadECCOData_continuous(
         beg_datetime = beg_datetime,
@@ -239,7 +238,12 @@ def processECCO(
     ML_ave = {}
 
     ML_snp_varnames = ["MLD_snp", "MLT_snp", "MLS_snp"]
-    ML_ave_varnames = ["dMLTdt", "MLG_ttl", "MLG_hadv", "MLG_vadv", "MLG_adv", "MLG_vdiff", "MLG_hdiff", "MLG_forcing"]
+    ML_ave_varnames = [
+        "dMLTdt", "MLG_ttl",
+        "MLG_hadv", "MLG_vadv", "MLG_adv",
+        "MLG_vdiff", "MLG_hdiff",
+        "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf",
+    ]
 
     for varname in ML_snp_varnames:
         ML_snp[varname] = xr.zeros_like(sample2D_snp).rename(varname)
@@ -290,7 +294,7 @@ def processECCO(
     # compute variable in the middle of time_bnds
     MLD_0 = ML_snp["MLD_snp"][0, :, :, :].to_numpy()
     MLD_1 = ML_snp["MLD_snp"][1, :, :, :].to_numpy()
-    for varname in ["G_ttl", "G_hadv", "G_vadv", "G_vdiff", "G_hdiff", "G_forcing"]:
+    for varname in ["G_ttl", "G_hadv", "G_vadv", "G_vdiff", "G_hdiff", "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf"]:
         ML_varname = "ML%s" % varname
         for l in range(Nl):
                 
@@ -327,7 +331,11 @@ def processECCO(
             + ML_ave["MLG_vadv"]
             + ML_ave["MLG_hdiff"]
             + ML_ave["MLG_vdiff"]
-            + ML_ave["MLG_forcing"]
+            + ML_ave["MLG_frc_sw"]
+            + ML_ave["MLG_frc_lw"]
+            + ML_ave["MLG_frc_sh"]
+            + ML_ave["MLG_frc_lh"]
+            + ML_ave["MLG_frc_fwf"]
     )
 
     ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
