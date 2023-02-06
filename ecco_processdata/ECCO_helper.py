@@ -60,16 +60,29 @@ ECCO_mapping = {
         "varnames" : ["SSH", "ETAN"],
     },
 
-    "POSTPROC_G_TERMS" : {
-        "fileprefix": "G_TERMS",
-        "varnames": ["G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff",
-                     "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf",
-                     "G_sum", "G_res"],
+    "POSTPROC_GS_TERMS" : {
+        "fileprefix": "GS_TERMS",
+        "varnames": ["Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff",
+                     "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf",
+                     "Gs_sum", "Gs_res"],
     },
+
 
     "POSTPROC_MXLANA" : {
         "fileprefix": "MXLANA",
-        "varnames": ["MLT", "dMLTdT"],
+        "varnames": [
+
+            "MLT", "dMLTdT",
+
+            "MLG_ttl", "MLG_hadv", "MLG_vadv", "MLG_hdiff", "MLG_vdiff",
+            "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf",
+            "MLG_sum", "MLG_res",
+
+            "MLGs_ttl", "MLGs_hadv", "MLGs_vadv", "MLGs_hdiff", "MLGs_vdiff",
+            "MLGs_frc_sw", "MLGs_frc_lw", "MLGs_frc_sh", "MLGs_frc_lh", "MLGs_frc_fwf",
+            "MLGs_sum", "MLGs_res",
+
+        ],
     },
 
 
@@ -237,7 +250,8 @@ def computeTendency(target_datetime, grid=None):
     ecco_grid = getECCOGrid()
     vol = (ecco_grid.rA*ecco_grid.drF*ecco_grid.hFacC).transpose('tile','k','j','i')
 
-    sTHETA = ds.THETA_snp * (1+ds.ETAN_snp/ecco_grid.Depth)
+    s_star_snap = 1 + ds.ETAN_snp / ecco_grid.Depth
+    sTHETA = ds.THETA_snp * s_star_snap
     G_ttl = xgcm_grid.diff(sTHETA, 'T', boundary='fill', fill_value=0.0)/delta_t
 
     ADVxy_diff = xgcm_grid.diff_2d_vector({'X' : ds.ADVx_TH, 'Y' : ds.ADVy_TH}, boundary = 'fill')
@@ -313,18 +327,18 @@ def computeTendency(target_datetime, grid=None):
     G_res = G_sum - G_ttl
 
     result = {
-        "G_ttl"     : G_ttl,
-        "G_hadv"    : G_hadv,
-        "G_vadv"    : G_vadv,
-        "G_frc_sw"  : G_frc_sw,
-        "G_frc_lw"  : G_frc_lw,
-        "G_frc_sh"  : G_frc_sh,
-        "G_frc_lh"  : G_frc_lh,
-        "G_frc_fwf" : G_frc_fwf,
-        "G_hdiff"   : G_hdiff,
-        "G_vdiff"   : G_vdiff,
-        "G_sum"     : G_sum,
-        "G_res"     : G_res,
+        "Gs_ttl"     : G_ttl,
+        "Gs_hadv"    : G_hadv,
+        "Gs_vadv"    : G_vadv,
+        "Gs_frc_sw"  : G_frc_sw,
+        "Gs_frc_lw"  : G_frc_lw,
+        "Gs_frc_sh"  : G_frc_sh,
+        "Gs_frc_lh"  : G_frc_lh,
+        "Gs_frc_fwf" : G_frc_fwf,
+        "Gs_hdiff"   : G_hdiff,
+        "Gs_vdiff"   : G_vdiff,
+        "Gs_sum"     : G_sum,
+        "Gs_res"     : G_res,
     }
 
 

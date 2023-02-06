@@ -6,6 +6,7 @@ import numpy as np
 import argparse
 import ECCO_helper
 import xarray as xr
+import postprocess_ECCO_tools
 
 parser = argparse.ArgumentParser(
                     prog = 'postprocess_ECCO.py',
@@ -20,10 +21,8 @@ output_root_dir = "data/ECCO_LLC"
 
 MLD_dev = 0.03
 
-nprocs = 1
+nprocs = 8
 
-beg_time = datetime.datetime(2017, 12, 25)
-end_time = datetime.datetime(2018,  1,  1)
 
 total_days = (end_time - beg_time).days
 
@@ -43,17 +42,29 @@ class JOB:
 
         time_now_str = "%04d-%02d-%02d" % (y, m, d)
 
-        _tmp = ECCO_helper.getECCOFilename("G_ttl", "DAILY", self.t)
-        output_filename = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
 
-        dir_name = os.path.dirname(output_filename)
-        if not os.path.isdir(dir_name):
-            print("Create dir: %s" % (dir_name,))
-            Path(dir_name).mkdir(parents=True, exist_ok=True)
+
+
+        _tmp = ECCO_helper.getECCOFilename("Gs_ttl", "DAILY", self.t)
+        output_filename_G_terms = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
+        
+        _tmp = ECCO_helper.getECCOFilename("MLT", "DAILY", self.t)
+        output_filename_MXLANA = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
+
+        output_filenames = [
+            output_filename_G_terms,
+            output_filename_MXLANA,
+        ]
+
+        for output_filename in output_filenames:
+            dir_name = os.path.dirname(output_filename)
+            if not os.path.isdir(dir_name):
+                print("Create dir: %s" % (dir_name,))
+                Path(dir_name).mkdir(parents=True, exist_ok=True)
 
 
         all_exist = True
-        for filename in [output_filename,]:
+        for filename in output_filenames:
             all_exist = all_exist and os.path.isfile(filename)
 
         if all_exist:
@@ -72,13 +83,14 @@ class JOB:
             ds.time.encoding = {}
             ds.reset_coords(drop=True)
 
-            print("Output: ", output_filename)
+            print("Output: ", output_filename_G_terms)
+            ds.to_netcdf(output_filename_G_terms, format='NETCDF4')
 
-
-
-            ds.to_netcdf(output_filename, format='NETCDF4')
-            
-
+            print("Comput mixed-layer integrated terms.")
+            postprocess_ECCO_tools.processECCO(
+                self.t,
+                output_filename_MXLANA,
+            ) 
  
 def wrap_retrieve(job):
 

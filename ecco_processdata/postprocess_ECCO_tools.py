@@ -188,6 +188,8 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
 def processECCO(
     target_datetime,
     output_filename,
+    output_physicalZ = False,
+    output_filename_physicalZ = "",
     MLD_dev = 0.03,
 ):
 
@@ -197,7 +199,7 @@ def processECCO(
     beg_datetime = target_datetime # - timedelta(days=1)
 
     snp_varnames = ["THETA", "SALT", "ETAN"]
-    ave_varnames = ["MXLDEPTH", "G_ttl", "G_hadv", "G_vadv", "G_hdiff", "G_vdiff", "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf"]
+    ave_varnames = ["MXLDEPTH", "Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff", "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf"]
 
     ds = ECCO_helper.loadECCOData_continuous(
         beg_datetime = beg_datetime,
@@ -209,8 +211,9 @@ def processECCO(
     xgcm_grid = ecco.get_llc_grid(ds)
     ecco_grid = ECCO_helper.getECCOGrid()
     
-    sTHETA_snp = ds.THETA_snp * (1 + ds.ETAN_snp/ecco_grid.Depth)
-    sSALT_snp  = ds.SALT_snp  * (1 + ds.ETAN_snp/ecco_grid.Depth)
+    s_snp = 1 + ds.ETAN_snp / ecco_grid.Depth
+    sTHETA_snp = ds.THETA_snp * s_snp
+    sSALT_snp  = ds.SALT_snp  * s_snp
 
     sTHETA_snp = sTHETA_snp.rename("sTHETA_snp")
     
@@ -237,12 +240,12 @@ def processECCO(
     ML_snp = {}
     ML_ave = {}
 
-    ML_snp_varnames = ["MLD_snp", "MLT_snp", "MLS_snp"]
+    ML_snp_varnames = ["MLDs_snp", "MLTs_snp", "MLSs_snp"]
     ML_ave_varnames = [
-        "dMLTdt", "MLG_ttl",
-        "MLG_hadv", "MLG_vadv", "MLG_adv",
-        "MLG_vdiff", "MLG_hdiff",
-        "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf",
+        "dMLTsdt", "MLGs_ttl",
+        "MLGs_hadv", "MLGs_vadv", "MLGs_adv",
+        "MLGs_vdiff", "MLGs_hdiff",
+        "MLGs_frc_sw", "MLGs_frc_lw", "MLGs_frc_sh", "MLGs_frc_lh", "MLGs_frc_fwf",
     ]
 
     for varname in ML_snp_varnames:
@@ -263,7 +266,7 @@ def processECCO(
     for s in range(2):
         for l in range(Nl):
 
-            ML_snp["MLD_snp"][s, l, :, :] = findMLD_rho(
+            ML_snp["MLDs_snp"][s, l, :, :] = findMLD_rho(
                 rho_snp[s, :, l, :, :].to_numpy(),
                 z_T,
                 mask=mask2D[l],
@@ -271,16 +274,16 @@ def processECCO(
                 dev=MLD_dev,
             )
 
-            ML_snp["MLT_snp"][s, l, :, :] = computeMLMean(
+            ML_snp["MLTs_snp"][s, l, :, :] = computeMLMean(
                 sTHETA_snp[s, :, l, :, :].to_numpy(),
-                ML_snp["MLD_snp"][s, l, :, :].to_numpy(),
+                ML_snp["MLDs_snp"][s, l, :, :].to_numpy(),
                 z_W,
                 mask=mask2D[l]
             )
 
-            ML_snp["MLS_snp"][s, l, :, :] = computeMLMean(
+            ML_snp["MLSs_snp"][s, l, :, :] = computeMLMean(
                 sSALT_snp[s, :, l, :, :].to_numpy(),
-                ML_snp["MLD_snp"][s, l, :, :].to_numpy(),
+                ML_snp["MLDs_snp"][s, l, :, :].to_numpy(),
                 z_W,
                 mask=mask2D[l]
             )
@@ -288,57 +291,58 @@ def processECCO(
     dt = 86400.0
     #xgcm_grid.diff(ds.time_snp, 'T', boundary='fill', fill_value=np.nan).astype('f4') / 1e9 # nanosec to sec 
    
-    ML_ave["dMLTdt"][0, :, :, :] = (ML_snp["MLT_snp"][1, :, :, :] - ML_snp["MLT_snp"][0, :, :, :]) / dt
+    ML_ave["dMLTsdt"][0, :, :, :] = (ML_snp["MLTs_snp"][1, :, :, :] - ML_snp["MLTs_snp"][0, :, :, :]) / dt
 
 
     # compute variable in the middle of time_bnds
-    MLD_0 = ML_snp["MLD_snp"][0, :, :, :].to_numpy()
-    MLD_1 = ML_snp["MLD_snp"][1, :, :, :].to_numpy()
-    for varname in ["G_ttl", "G_hadv", "G_vadv", "G_vdiff", "G_hdiff", "G_frc_sw", "G_frc_lw", "G_frc_sh", "G_frc_lh", "G_frc_fwf"]:
+    MLDs_snp = [ ML_snp["MLDs_snp"][s, :, :, :].to_numpy() for s in range(2) ]
+    for phy_proc in ["ttl", "hadv", "vadv", "vdiff", "hdiff", "frc_sw", "frc_lw", "frc_sh", "frc_lh", "frc_fwf"]:
+        
+        varname = "Gs_%s" % phy_proc
         ML_varname = "ML%s" % varname
         for l in range(Nl):
                 
             ML_ave[ML_varname][0, l, :, :] = computeMLMean(
                 ds[varname][0, :, l, :, :].to_numpy(),
-                MLD_1[l, :, :],
+                MLDs_snp[1][l, :, :],
                 z_W,
                 mask=mask2D[l]
             )
 
     # Compute entrainment term explicitly
-    ML_ave["MLG_ent"] = xr.zeros_like(sample2D_ave).rename("MLG_ent") 
+    ML_ave["MLGs_ent"] = xr.zeros_like(sample2D_ave).rename("MLGs_ent") 
     for l in range(Nl):
             
         sTHETA = sTHETA_snp[0, :, l, :, :].to_numpy()
-        ML_ave["MLG_ent"][0, l, :, :] = ( computeMLMean(
+        ML_ave["MLGs_ent"][0, l, :, :] = ( computeMLMean(
             sTHETA,
-            MLD_1[l, :, :],
+            MLDs_snp[1][l, :, :],
             z_W,
             mask=mask2D[l]
         ) -  computeMLMean(
             sTHETA,
-            MLD_0[l, :, :],
+            MLDs_snp[0][l, :, :],
             z_W,
             mask=mask2D[l]
         )) / dt
 
 
     # Additional diagnostic variables 
-    ML_ave["MLG_adv"][:, :, :, :] = ML_ave["MLG_hadv"] + ML_ave["MLG_vadv"]
-    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt"] - (
-              ML_ave["MLG_ent"] 
-            + ML_ave["MLG_hadv"]
-            + ML_ave["MLG_vadv"]
-            + ML_ave["MLG_hdiff"]
-            + ML_ave["MLG_vdiff"]
-            + ML_ave["MLG_frc_sw"]
-            + ML_ave["MLG_frc_lw"]
-            + ML_ave["MLG_frc_sh"]
-            + ML_ave["MLG_frc_lh"]
-            + ML_ave["MLG_frc_fwf"]
+    ML_ave["MLGs_adv"][:, :, :, :] = ML_ave["MLGs_hadv"] + ML_ave["MLGs_vadv"]
+    ML_ave["dMLTsdt_res"] = ML_ave["dMLTsdt"] - (
+              ML_ave["MLGs_ent"] 
+            + ML_ave["MLGs_hadv"]
+            + ML_ave["MLGs_vadv"]
+            + ML_ave["MLGs_hdiff"]
+            + ML_ave["MLGs_vdiff"]
+            + ML_ave["MLGs_frc_sw"]
+            + ML_ave["MLGs_frc_lw"]
+            + ML_ave["MLGs_frc_sh"]
+            + ML_ave["MLGs_frc_lh"]
+            + ML_ave["MLGs_frc_fwf"]
     )
 
-    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
+    ML_ave["dMLTsdt_res"] = ML_ave["dMLTsdt_res"].rename("dMLTsdt_res")
 
     MLU = np.zeros((Nt, Ny, Nx))
     MLV = np.zeros((Nt, Ny, Nx))
@@ -352,9 +356,70 @@ def processECCO(
     dMLDdy = np.zeros((Nt, Ny, Nx))
  
 
+
+    print("Compute physical Z terms.")
+
+    s_0 = s_snp[0, :, : ,:]
+    s_1 = s_snp[1, :, : ,:]
+    
+    for phy_proc in [
+        "ttl",
+        "ent", "hadv", "vadv", "vdiff", "hdiff",
+        "frc_sw", "frc_lw", "frc_sh", "frc_lh", "frc_fwf",
+    ]:
+        zstar_name = "MLGs_%s" % (phy_proc,)
+        z_name     = "MLG_%s" % (phy_proc,)
+        ML_ave[z_name] = ML_ave[zstar_name] /  s_0
+
+
+
+    MLT_snp = xr.zeros_like(s_snp).rename('MLT_snp')
+    MLS_snp = xr.zeros_like(s_snp).rename('MLS_snp')
+
+    for s in range(2):
+        for l in range(Nl):
+
+            MLT_snp[s, l, :, :] = computeMLMean(
+                ds.THETA_snp[s, :, l, :, :].to_numpy(),
+                MLDs_snp[s][l, :, :],
+                z_W,
+                mask=mask2D[l]
+            )
+
+            MLS_snp[s, l, :, :] = computeMLMean(
+                ds.SALT_snp[s, :, l, :, :].to_numpy(),
+                MLDs_snp[s][l, :, :],
+                z_W,
+                mask=mask2D[l]
+            )
+
+    ML_ave["dMLTdt"] = (MLT_snp[1, :, :, :] - MLT_snp[0, :, :, :]) / dt
+    ML_ave["dMLSdt"] = (MLS_snp[1, :, :, :] - MLS_snp[0, :, :, :]) / dt
+    
+
+    ML_ave["MLG_rescale"] = - MLT_snp[1, :, :, :] / s_0 * (s_1 - s_0) / dt
+    ML_ave["MLG_rescale"] = ML_ave["MLG_rescale"].rename('MLG_rescale')
+    
+    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt"] - (
+              ML_ave["MLG_ent"] 
+            + ML_ave["MLG_hadv"]
+            + ML_ave["MLG_vadv"]
+            + ML_ave["MLG_hdiff"]
+            + ML_ave["MLG_vdiff"]
+            + ML_ave["MLG_frc_sw"]
+            + ML_ave["MLG_frc_lw"]
+            + ML_ave["MLG_frc_sh"]
+            + ML_ave["MLG_frc_lh"]
+            + ML_ave["MLG_frc_fwf"]
+            + ML_ave["MLG_rescale"]
+    )
+
+    ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
+
     output_data = []
 
     for k, var in ML_ave.items():
+        var = var.rename(k)
         output_data.append(var)
 
     for var in output_data:
@@ -374,6 +439,8 @@ def processECCO(
 
 
     ds_out.to_netcdf(output_filename)
+
+
     # 1. convert T and S to density
     # 2. Find the mixed-layer depth
     # 3. Compute mixed-layer temperature
@@ -552,7 +619,7 @@ if __name__ == "__main__" :
 
     target_datetime = datetime(2017, 12, 26)
     output_filename = "data/ECCO_LLC/%s/%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)
-
+    
     processECCO(
         target_datetime,
         output_filename,
