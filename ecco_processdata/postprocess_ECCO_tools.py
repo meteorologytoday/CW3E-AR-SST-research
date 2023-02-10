@@ -242,7 +242,7 @@ def processECCO(
 
     ML_snp_varnames = ["MLDs_snp", "MLTs_snp", "MLSs_snp"]
     ML_ave_varnames = [
-        "dMLTsdt", "MLGs_ttl",
+        "MLTs", "dMLTsdt", "MLGs_ttl",
         "MLGs_hadv", "MLGs_vadv", "MLGs_adv",
         "MLGs_vdiff", "MLGs_hdiff",
         "MLGs_frc_sw", "MLGs_frc_lw", "MLGs_frc_sh", "MLGs_frc_lh", "MLGs_frc_fwf",
@@ -292,6 +292,7 @@ def processECCO(
     #xgcm_grid.diff(ds.time_snp, 'T', boundary='fill', fill_value=np.nan).astype('f4') / 1e9 # nanosec to sec 
    
     ML_ave["dMLTsdt"][0, :, :, :] = (ML_snp["MLTs_snp"][1, :, :, :] - ML_snp["MLTs_snp"][0, :, :, :]) / dt
+    ML_ave["MLTs"][0, :, :, :] = (ML_snp["MLTs_snp"][0, :, :, :] + ML_snp["MLTs_snp"][1, :, :, :]) / 2.0
 
 
     # compute variable in the middle of time_bnds
@@ -396,6 +397,8 @@ def processECCO(
     ML_ave["dMLTdt"] = (MLT_snp[1, :, :, :] - MLT_snp[0, :, :, :]) / dt
     ML_ave["dMLSdt"] = (MLS_snp[1, :, :, :] - MLS_snp[0, :, :, :]) / dt
     
+    ML_ave["MLT"] = (MLT_snp[0, :, :, :] + MLT_snp[1, :, :, :]) / 2.0
+    ML_ave["MLT"] = ML_ave["MLT"].rename()
 
     ML_ave["MLG_rescale"] = - MLT_snp[1, :, :, :] / s_0 * (s_1 - s_0) / dt
     ML_ave["MLG_rescale"] = ML_ave["MLG_rescale"].rename('MLG_rescale')

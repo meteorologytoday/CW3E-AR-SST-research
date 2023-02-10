@@ -3,8 +3,6 @@
 . pretty_latlon.sh
 
 
-#ocn_dataset="ORA5-clim"
-ocn_dataset="ECCO"
 
         
 output_root=output_${ocn_dataset}

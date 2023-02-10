@@ -10,11 +10,8 @@ def doy_noleap(t):
     ref_t = datetime.datetime(2022, t.month, t.day)
     return int(ref_t.strftime('%j'))
 
-
-
-
 def getWateryear(d):
-
+   
     return d.year + 1 if d.month in [10, 11, 12] else d.year
 
 def getWaterday(d, no_leap=False):
