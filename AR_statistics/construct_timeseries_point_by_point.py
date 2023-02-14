@@ -15,10 +15,16 @@ import ECCO_helper
 
 def weightedAvg(var_data, wgts):
 
-    idx = np.isfinite(var_data)
-    d = var_data.to_numpy()[idx]
+    d = var_data.to_numpy()
+
+    idx = np.isfinite(d)
+    d = d[idx]
     w = wgts.to_numpy()[idx]
-    return np.sum(d * w) / np.sum(w)
+
+    print("Weight: ", np.mean(d))
+
+    return np.mean(d)
+    #return np.sum(d * w) / np.sum(w)
 
 
 print("Loading libraries completed.")
@@ -110,13 +116,14 @@ computed_ERA5_vars = ["ERA5_MLG_ttl",]
 
 ts_ds = xr.Dataset(
     { 
-        varname : (['time',], np.zeros((total_days,), dtype=np.float32)) 
+        varname : (['time',], np.zeros((total_days,), dtype=np.float64)) 
         for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars + ['data_good',] ) 
     },
 
     coords = {
         'time' : t_vec_npdatetime, 
     },
+
 )
 
 lat_rng = np.array(args.lat_rng)
@@ -150,7 +157,6 @@ def magicalExtension(_data):
     res_max = np.amax(np.abs(res[np.isfinite(res)]))
     print("Max of abs(MLG_residue): ", res_max)
     
-
 
 #mask_ERA5 = ds
 
@@ -371,18 +377,34 @@ for d, _t in enumerate(t_vec):
 
     for varname, var_data in _data.items():
 
-        #print("Averaging: ", varname)
         if (varname in ERA5_varnames) or (varname in computed_ERA5_vars): 
-            #ts_ds[varname][d] = var_data.weighted(ERA5_wgts).mean(skipna=True)
             ts_ds[varname][d] = weightedAvg(var_data, ERA5_wgts)
             
         elif (varname in ECCO_varnames) or (varname in computed_LLC_vars):
-            #print(var_data.shape)
-            #print(ecco_wgts.shape)
             ts_ds[varname][d] = weightedAvg(var_data, ecco_wgts)
 
         else:
             raise Exception("Unknown variable : %s" % (varname,) )
+
+    print("Averaged Residue: ", ts_ds["MLG_residue"][d])
+
+    MLG_res2 = (ts_ds['dMLTdt'][d] - (
+          ts_ds['MLG_frc_sw'][d]
+        + ts_ds['MLG_frc_lw'][d]
+        + ts_ds['MLG_frc_sh'][d]
+        + ts_ds['MLG_frc_lh'][d]
+        + ts_ds['MLG_frc_fwf'][d]
+        + ts_ds['MLG_rescale'][d]
+        + ts_ds["MLG_vdiff"][d]
+        + ts_ds["MLG_hdiff"][d]
+        + ts_ds["MLG_vadv"][d]
+        + ts_ds["MLG_hadv"][d]
+        + ts_ds["MLG_ent"][d]
+    )).rename('MLG_res2')
+    
+    print("Averaged Residue - forced check: ", MLG_res2)
+
+
 
 print("Exclude non-consecutive years")
 data_good_t = t_vec_npdatetime[ ts_ds.data_good == 1 ]
