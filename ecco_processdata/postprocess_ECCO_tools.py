@@ -22,6 +22,34 @@ default_fill_value_int = -1
 # RHO_CONST number is read from
 # https://ecco-v4-python-tutorial.readthedocs.io/Thermal_wind.html#Viewing-and-Plotting-Density
 RHO_CONST = 1029.0
+OMEGA     = (2*np.pi)/86164
+
+def calddz(Q, xgcm_grid, ecco_grid, interp=False):
+    dQdz = xgcm_grid.diff(Q, axis='Z', boundary='fill') #/ ecco_grid.drC
+
+    if interp:
+        dQdz = xgcm_grid.interp(dQdz, 'Z')
+    
+    return dQdz
+
+def calGrad(Q, xgcm_grid, ecco_grid):
+
+    dQdx = (xgcm_grid.diff(Q, axis="X", boundary='extend')) / ecco_grid.dxC
+    dQdy = (xgcm_grid.diff(Q, axis="Y", boundary='extend')) / ecco_grid.dyC
+
+    #dQdx.data = dQdx.values
+    #dQdy.data = dQdy.values
+
+    #_interp = xgcm_grid.interp_2d_vector({"X": dQdx, "Y": dQdy}, boundary='extend')
+
+    dQdx = xgcm_grid.interp(dQdx, "X")#_interp["X"]
+    dQdy = xgcm_grid.interp(dQdy, "Y")
+    #dQdy = _interp["Y"]
+
+    return dQdx, dQdy
+
+
+
 
 def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
 
@@ -188,8 +216,6 @@ def findMLD_rho(rho, z_T, dev=0.03, mask=None, Nz_bot=None, fill_value=default_f
 def processECCO(
     target_datetime,
     output_filename,
-    output_physicalZ = False,
-    output_filename_physicalZ = "",
     MLD_dev = 0.03,
 ):
 
@@ -199,7 +225,7 @@ def processECCO(
     beg_datetime = target_datetime # - timedelta(days=1)
 
     snp_varnames = ["THETA", "SALT", "ETAN"]
-    ave_varnames = ["MXLDEPTH", "Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff", "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf"]
+    ave_varnames = ["MXLDEPTH", "Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff", "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf", "THETA", "SALT", "UVEL", "VVEL", "RHOAnoma", "PHIHYDcR"]
 
     ds = ECCO_helper.loadECCOData_continuous(
         beg_datetime = beg_datetime,
@@ -345,19 +371,6 @@ def processECCO(
 
     ML_ave["dMLTsdt_res"] = ML_ave["dMLTsdt_res"].rename("dMLTsdt_res")
 
-    MLU = np.zeros((Nt, Ny, Nx))
-    MLV = np.zeros((Nt, Ny, Nx))
-
-
-    dMLTdx = np.zeros((Nt, Ny, Nx))
-    dMLTdy = np.zeros((Nt, Ny, Nx))
-    dMLSdx = np.zeros((Nt, Ny, Nx))
-    dMLSdy = np.zeros((Nt, Ny, Nx))
-    dMLDdx = np.zeros((Nt, Ny, Nx))
-    dMLDdy = np.zeros((Nt, Ny, Nx))
- 
-
-
     print("Compute physical Z terms.")
 
     s_0 = s_snp[0, :, : ,:]
@@ -397,8 +410,8 @@ def processECCO(
     ML_ave["dMLTdt"] = (MLT_snp[1, :, :, :] - MLT_snp[0, :, :, :]) / dt
     ML_ave["dMLSdt"] = (MLS_snp[1, :, :, :] - MLS_snp[0, :, :, :]) / dt
     
-    ML_ave["MLT"] = (MLT_snp[0, :, :, :] + MLT_snp[1, :, :, :]) / 2.0
-    ML_ave["MLT"] = ML_ave["MLT"].rename()
+    #ML_ave["MLT"] = (MLT_snp[0, :, :, :] + MLT_snp[1, :, :, :]) / 2.0
+    #ML_ave["MLT"] = ML_ave["MLT"].rename()
 
     ML_ave["MLG_rescale"] = - MLT_snp[1, :, :, :] / s_0 * (s_1 - s_0) / dt
     ML_ave["MLG_rescale"] = ML_ave["MLG_rescale"].rename('MLG_rescale')
@@ -419,11 +432,88 @@ def processECCO(
 
     ML_ave["dMLTdt_res"] = ML_ave["dMLTdt_res"].rename("dMLTdt_res")
 
+    ####################################################
+    # compute MLU, MLV, dMLTdx, dMLTdy, dMLSdx, dMLSdy
+    #         U_g, V_g
+    # with MLD in the end of the time interval
+    ####################################################
+
+    def calGrad_wrap(Q):
+        return calGrad(Q, xgcm_grid, ecco_grid)
+    
+    ML_ave2 = {}
+
+
+    for varname in ["MLT", "MLS", "MLU", "MLV", "U_g", "V_g", "dMLTdx", "dMLTdy", "dMLSdx", "dMLSdy", "dTdz_b", "dSdz_b"]:
+         ML_ave2[varname] = xr.zeros_like(ML_ave["MLG_ttl"]).rename(varname)
+
+    
+    # Compute geostrophic balance. The code is from 
+    # https://ecco-v4-python-tutorial.readthedocs.io/Geostrophic_balance.html#Right-hand-side
+
+    dens  = ds.RHOAnoma + RHO_CONST
+    pressanom = ds.PHIHYDcR
+
+    dpdx, dpdy = calGrad_wrap(RHO_CONST * pressanom)
+
+    f_co = 2 * OMEGA * np.sin(ecco_grid.YC * np.pi / 180)
+    U_g = - dpdy / RHO_CONST / f_co
+    V_g =   dpdx / RHO_CONST / f_co
+
+
+    # Compute velocity at T grid
+    vel_interp = xgcm_grid.interp_2d_vector({'X':ds.UVEL,'Y':ds.VVEL},boundary='extend')
+    UVEL = vel_interp['X']
+    VVEL = vel_interp['Y']
+
+    for MLvarname, var in {
+        "MLT" : ds["THETA"],
+        "MLS" : ds["SALT"],
+        "MLU" : UVEL,
+        "MLV" : VVEL,
+        "U_g" : U_g,
+        "V_g" : V_g,
+    }.items():
+
+        for l in range(Nl):
+
+            MLD = MLDs_snp[1][l, :, :]
+
+            ML_ave2[MLvarname][0, l, :, :] = computeMLMean(
+                var[0, :, l, :, :].to_numpy(),
+                MLD,
+                z_W,
+                mask=mask2D[l]
+            )
+
+    
+    ML_ave2["dMLTdx"], ML_ave2["dMLTdy"] = calGrad_wrap(ML_ave2["MLT"])
+    ML_ave2["dMLSdx"], ML_ave2["dMLSdy"] = calGrad_wrap(ML_ave2["MLS"])
+
+
+
+    for l in range(Nl):
+        MLD = MLDs_snp[1][l, :, :]
+
+        dTdz = calculus_tools.W_ddz_T(ds["THETA"][0, :, l, :, :].to_numpy(), z_W=z_W)
+        dSdz = calculus_tools.W_ddz_T(ds["SALT"][0, :, l, :, :].to_numpy(), z_W=z_W)
+
+        ML_ave2["dTdz_b"][0, l, :, :] = evalAtMLD_W(dTdz, MLD, z_W, mask=mask2D[l])
+        ML_ave2["dSdz_b"][0, l, :, :] = evalAtMLD_W(dSdz, MLD, z_W, mask=mask2D[l])
+    
+
+    
     output_data = []
 
     for k, var in ML_ave.items():
         var = var.rename(k)
         output_data.append(var)
+
+    for k, var in ML_ave2.items():
+        var = var.rename(k)
+        output_data.append(var)
+
+    output_data.append(ML_snp["MLDs_snp"][1:2, :, :, :].rename("MLD"))
 
     for var in output_data:
         for attr in ["valid_min", "valid_max"]:
@@ -444,6 +534,7 @@ def processECCO(
     ds_out.to_netcdf(output_filename)
 
 
+
     # 1. convert T and S to density
     # 2. Find the mixed-layer depth
     # 3. Compute mixed-layer temperature
@@ -462,165 +553,11 @@ def processECCO(
 
     #Nz_bot = np.sum(mask3D, axis=0)
 
-    """
-    print("Compute density and buoyancy") 
-    rho = TS2rho(TEMP, SALT)
-    b   = TS2b(TEMP, SALT)
-    """
-    """
-    N2 = - ec.g0 / RHO_CONST * dRHOdz
-     
-
-    print("Compute mixed-layer depth")    
-    # compute mixed-layer depth
-
-    if input_filename_MLD == "":
-        MLD = np.zeros((Nt, Ny, Nx))
-
-    MLT = np.zeros((Nt, Ny, Nx))
-    MLS = np.zeros((Nt, Ny, Nx))
-    
-    MLU = np.zeros((Nt, Ny, Nx))
-    MLV = np.zeros((Nt, Ny, Nx))
-
-
-    dMLTdx = np.zeros((Nt, Ny, Nx))
-    dMLTdy = np.zeros((Nt, Ny, Nx))
-    dMLSdx = np.zeros((Nt, Ny, Nx))
-    dMLSdy = np.zeros((Nt, Ny, Nx))
-    dMLDdx = np.zeros((Nt, Ny, Nx))
-    dMLDdy = np.zeros((Nt, Ny, Nx))
- 
-    dT = np.zeros((Nt, Ny, Nx))
-    dS = np.zeros((Nt, Ny, Nx))
-    db = np.zeros((Nt, Ny, Nx))
-
-
-    w_b = np.zeros((Nt, Ny, Nx))
-    
-    V_g = np.zeros((Nt, Ny, Nx))
-    U_g = np.zeros((Nt, Ny, Nx))
-    
-    dTdz_b = np.zeros((Nt, Ny, Nx))
-    dSdz_b = np.zeros((Nt, Ny, Nx))
-    dUdz_b = np.zeros((Nt, Ny, Nx))
-    dVdz_b = np.zeros((Nt, Ny, Nx))
-    N2_b   = np.zeros((Nt, Ny, Nx))
-    
-    lapT   = np.zeros((Nt, Ny, Nx))
-    lapS   = np.zeros((Nt, Ny, Nx))
-
-
-    print("Compute needed variables...")    
-    for t in range(Nt):
-
-        if input_filename_MLD == "":
-            MLD[t, :, :] = findMLD_rho(RHO[t, :, :, :], z_T, mask=mask, Nz_bot=Nz_bot, dev=MLD_dev)
-    
-        MLT[t, :, :] = computeMLMean(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        MLS[t, :, :] = computeMLMean(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        MLU[t, :, :] = computeMLMean(UVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        MLV[t, :, :] = computeMLMean(VVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-
-        T_b = evalAtMLD_T(TEMP[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        S_b = evalAtMLD_T(SALT[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        w_b[t, :, :] = evalAtMLD_T(WVEL[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-
-        MLb = TS2b(MLT[t, :, :], MLS[t, :, :])
-        b_b = TS2b(T_b, S_b)
-        
-        dT[t, :, :] = MLT[t, :, :] - T_b
-        dS[t, :, :] = MLS[t, :, :] - S_b
-        db[t, :, :] = MLb - b_b
-       
-        # Compute geostrophic velocity           
-        dMLTdx[t, :, :], dMLTdy[t, :, :] = advection_tools.calGrad(MLT[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
-        dMLSdx[t, :, :], dMLSdy[t, :, :] = advection_tools.calGrad(MLS[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
-        dMLDdx[t, :, :], dMLDdy[t, :, :] = advection_tools.calGrad(MLD[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
-        dSSHdx, dSSHdy = advection_tools.calGrad(SSH[t, :, :], lat, lon, periodoc_lon=False, mask=mask)
-
-        V_g[t, :, :] =   ec.g0 / f_co * dSSHdx
-        U_g[t, :, :] = - ec.g0 / f_co * dSSHdy
-
-
-        dTdz = calculus_tools.W_ddz_T(TEMP[t, :, :, :], z_T=z_T)
-        dSdz = calculus_tools.W_ddz_T(SALT[t, :, :, :], z_T=z_T)
-        dUdz = calculus_tools.W_ddz_T(UVEL[t, :, :, :], z_T=z_T)
-        dVdz = calculus_tools.W_ddz_T(VVEL[t, :, :, :], z_T=z_T)
-        
-        dTdz_b[t, :, :] = evalAtMLD_W(dTdz, MLD[t, :, :], z_W, mask=mask)
-        dSdz_b[t, :, :] = evalAtMLD_W(dSdz, MLD[t, :, :], z_W, mask=mask)
-        dUdz_b[t, :, :] = evalAtMLD_W(dUdz, MLD[t, :, :], z_W, mask=mask)
-        dVdz_b[t, :, :] = evalAtMLD_W(dVdz, MLD[t, :, :], z_W, mask=mask)
-        N2_b[t, :, :]   = evalAtMLD_T(N2[t, :, :, :], MLD[t, :, :], z_W, mask=mask)
-        
-        _lapT   = np.zeros((Nz, Ny, Nx))
-        _lapS   = np.zeros((Nz, Ny, Nx))
-
-        for k in range(Nz):
-            _lapT[k, :, :] = advection_tools.calLaplacian(TEMP[t, k, :, :], lat, lon, periodoc_lon=False, mask=mask)
-            _lapS[k, :, :] = advection_tools.calLaplacian(SALT[t, k, :, :], lat, lon, periodoc_lon=False, mask=mask)
-
-        lapT[t, :, :] = computeMLMean(_lapT, MLD[t, :, :], z_W, mask=mask)
-        lapS[t, :, :] = computeMLMean(_lapS, MLD[t, :, :], z_W, mask=mask)
-
-    output_vars = {
-        'MLD'     : MLD,
-        'MLT'     : MLT,
-        'MLS'     : MLS,
-        'SST'     : TEMP[:, 0, :, :],
-        'SSS'     : SALT[:, 0, :, :],
-        'dT'      : dT,
-        'dS'      : dS,
-        'db'      : db,
-        'MLU'     : MLU,
-        'MLV'     : MLV,
-        'w_b'     : w_b,
-        'V_g'     : V_g,
-        'U_g'     : U_g,
-        'dMLTdx'  : dMLTdx,
-        'dMLTdy'  : dMLTdy,
-        'dMLSdx'  : dMLSdx,
-        'dMLSdy'  : dMLSdy,
-        'dMLDdx'  : dMLDdx,
-        'dMLDdy'  : dMLDdy,
-        'dTdz_b'  : dTdz_b,
-        'dSdz_b'  : dSdz_b,
-        'dUdz_b'  : dUdz_b,
-        'dVdz_b'  : dVdz_b,
-        'N2_b'    : N2_b,
-        'lapT'    : lapT,
-        'lapS'    : lapS,
-    }
-
-    print("Writing output file: ", output_filename)
-    with netCDF4.Dataset(output_filename, mode='w', format='NETCDF4_CLASSIC') as ds: 
-
-        x_dim    = ds.createDimension('lon', Nx)
-        y_dim    = ds.createDimension('lat', Ny)
-        time_dim = ds.createDimension('time', None)
-
-
-        var_lon = ds.createVariable('lon', np.float32, ('lon',))
-        var_lat = ds.createVariable('lat', np.float32, ('lat',))
-        
-        var_lon[:] = lon
-        var_lat[:] = lat
-
-        for k, d in output_vars.items():
-
-            print("Output %s: " % (k, ), "; dim = ", d.shape)
-
-            _var = ds.createVariable(k, np.float32, ('time', 'lat', 'lon'), fill_value=fill_value)
-            _var[:, :, :] = d
-    """
-
-
 if __name__ == "__main__" : 
 
     print("*** This is for testing ***") 
 
-    target_datetime = datetime(2017, 12, 26)
+    target_datetime = datetime(2006, 12, 29)
     output_filename = "data/ECCO_LLC/%s/%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)
     
     processECCO(

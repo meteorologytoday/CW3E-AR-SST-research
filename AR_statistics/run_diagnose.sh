@@ -13,8 +13,16 @@ beg_year=1998
 end_year=2017
 
 spatial_rngs=(
+    30 50 -160 -130
     40 50 -150 -130
+    40 50 -145 -130
+    30 40 -160 -145
+    30 40 -145 -130
+    40 50 -160 -145
+    31 43 230 244
 )
+
+
 
 mask_ERA5="mask_ERA5.nc"
 mask_ECCO="mask_ECCO.nc"
@@ -53,8 +61,7 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / 4 )) ); do
 
     mkdir -p $output_dir
 
-    output_AR_file=$output_dir/AR_timeseries_climanom.nc
-
+    output_AR_file=$output_dir/AR_timeseries.nc
     if [ ! -f "$output_AR_file" ] ; then
         python3 construct_timeseries_point_by_point.py \
             --beg-year=$beg_year \
@@ -65,5 +72,52 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / 4 )) ); do
             --mask-ECCO $mask_ECCO \
             --output-dir $output_dir
     fi
-   
+
+    output_img=$output_dir/fig_dTdt_pdf_AR.png
+    python3 plot_dTdt_pdf.py --input $output_AR_file \
+        --IVT-rng 250 1e5 \
+        --output $output_img \
+        --no-display
+ 
+    output_img=$output_dir/fig_dTdt_pdf_AR_free.png
+    python3 plot_dTdt_pdf.py --input $output_AR_file \
+        --IVT-rng 0 250 \
+        --output $output_img \
+        --no-display
+ 
+    output_img=$output_dir/fig_dTdt_scatter_AR_123.png
+    python3 plot_dTdt_scatter_by_ARday.py \
+        --input $output_AR_file \
+        --IVT-rng 250 1e5 \
+        --output $output_img \
+        --watermonths 1 2 3 \
+        --no-display
+
+    output_img=$output_dir/fig_dTdt_scatter_AR_456.png
+    python3 plot_dTdt_scatter_by_ARday.py \
+        --input $output_AR_file \
+        --IVT-rng 250 1e5 \
+        --output $output_img \
+        --watermonths 4 5 6 \
+        --no-display
+
+
+    output_img=$output_dir/fig_dTdt_scatter_AR_free_123.png
+    python3 plot_dTdt_scatter_by_ARday.py \
+        --input $output_AR_file \
+        --IVT-rng 0 250 \
+        --output $output_img \
+        --watermonths 1 2 3 \
+        --no-display
+
+    output_img=$output_dir/fig_dTdt_scatter_AR_free_456.png
+    python3 plot_dTdt_scatter_by_ARday.py \
+        --input $output_AR_file \
+        --IVT-rng 0 250 \
+        --output $output_img \
+        --watermonths 4 5 6 \
+        --no-display
+
+
+
 done

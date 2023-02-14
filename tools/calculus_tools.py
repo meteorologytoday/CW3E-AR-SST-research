@@ -1,5 +1,4 @@
 import numpy as np
-import earth_constants as ec 
 
 
 def W_ddz_T(Q, z_W=None, z_T=None, clearNaN=True):

@@ -60,6 +60,11 @@ ECCO_mapping = {
         "varnames" : ["SSH", "ETAN"],
     },
 
+    "DENS_STRAT_PRESS" : {
+        "fileprefix" : "OCEAN_DENS_STRAT_PRESS",
+        "varnames" : ["RHOAnoma", "PHIHYDcR"],
+    },
+
     "POSTPROC_GS_TERMS" : {
         "fileprefix": "GS_TERMS",
         "varnames": ["Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff",
@@ -72,15 +77,19 @@ ECCO_mapping = {
         "fileprefix": "MXLANA",
         "varnames": [
 
-            "MLT", "dMLTdT",
+            "MLT", "dMLTdt",
 
             "MLG_ttl", "MLG_hadv", "MLG_vadv", "MLG_hdiff", "MLG_vdiff",
             "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf",
-            "MLG_sum", "MLG_res",
+            "MLG_sum", "MLG_res", "MLG_ent", "MLG_rescale",
 
             "MLGs_ttl", "MLGs_hadv", "MLGs_vadv", "MLGs_hdiff", "MLGs_vdiff",
             "MLGs_frc_sw", "MLGs_frc_lw", "MLGs_frc_sh", "MLGs_frc_lh", "MLGs_frc_fwf",
-            "MLGs_sum", "MLGs_res",
+            "MLGs_sum", "MLGs_res", "MLGs_ent",
+
+            "MLD", "dMLTdx", "dMLTdy", "dMLSdx", "dMLSdy",
+            "MLU", "MLV", "U_g", "V_g",
+            "dTdz_b", "dSdz_b",
 
         ],
     },

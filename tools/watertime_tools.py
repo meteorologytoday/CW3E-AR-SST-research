@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta
 import numpy as np
 
+m2wm = np.vectorize( lambda m: ((m - 10) % 12 + 1) )
+wm2m = np.vectorize( lambda wm:  ((wm + 9) - 1) % 12 + 1)
+
+
 def doy_leap(t):
     ref_t = datetime.datetime(2020, t.month, t.day)
     return int(ref_t.strftime('%j'))

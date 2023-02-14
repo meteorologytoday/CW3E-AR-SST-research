@@ -28,14 +28,18 @@ ds = xr.open_dataset(args.input)
 ds = ds.where((ds.IVT >= args.IVT_rng[0]) & (ds.IVT < args.IVT_rng[1]))
 
 MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf']).rename('MLG_frc')
+#MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh']).rename('MLG_frc')
 MLG_nonfrc = (ds['MLG_ttl'] - MLG_frc).rename('MLG_nonfrc')
 MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
 MLG_nonadv = (MLG_nonfrc - MLG_adv).rename('MLG_nonadv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
 MLG_nondiff = (MLG_nonfrc - MLG_diff).rename('MLG_nondiff')
-MLG_MLB = (ds['MLG_vdiff'] + ds['MLG_ent']).rename('MLG_MLB')
+MLG_ent = (MLG_nonfrc - MLG_adv - MLG_diff).rename('MLG_ent')
+MLG_MLB = (ds['MLG_vdiff'] + MLG_ent).rename('MLG_MLB')
 
-MLG_res = (ds['MLG_ttl'] - MLG_frc - ds["MLG_ent"] - MLG_diff - MLG_adv - ds["MLG_rescale"]).rename('MLG_res')
+MLG_res = (ds['MLG_ttl'] - MLG_frc - MLG_ent - MLG_diff - MLG_adv).rename('MLG_res')
+
+ttl_frc = (ds["mslhf"] + ds["msshf"] + ds["msnlwrf"] + ds["msnswrf"]).rename('ttl_frc')
 
 ds = xr.merge(
     [
@@ -45,10 +49,11 @@ ds = xr.merge(
         MLG_adv,
         MLG_nonadv,
         MLG_diff,
-#        MLG_ent,
+        MLG_ent,
         MLG_nondiff,
         MLG_MLB,
         MLG_res,
+        ttl_frc,
     ]
 )
 
@@ -104,6 +109,12 @@ var_infos = {
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
 
+    'ttl_frc' : {
+        'var'  : "$F_\\mathrm{sfc}$",
+        'unit' : "$ \\mathrm{W} / \\mathrm{m}^2 $",
+    },
+
+
     'MLG_vdiff' : {
         'var'  : "$\\dot{T}_\\mathrm{vdiff}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
@@ -136,8 +147,6 @@ var_infos = {
         'var'  : "$\\dot{T}_\\mathrm{nonfrc}$",
         'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
     },
-
-
 
     'MLG_ttl' : {
         'var'  : "$\\dot{T}_\\mathrm{ttl}$",
@@ -185,10 +194,10 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 
 plot_data = [
-    ('MLG_ttl', 'MLG_frc'),    ('MLG_ttl', 'MLG_nonfrc'), ('MLG_nonfrc', 'MLG_adv'), ('MLG_nonfrc', 'MLG_vdiff'), ('MLG_nonfrc', 'MLG_ent'), ('MLG_nonfrc', 'MLG_hdiff'), ('MLG_ttl', 'MLG_res')
+    ('MLG_frc', 'MLG_nonfrc'), ('ttl_frc', 'MLG_frc'), ('ttl_frc', 'MLG_nonfrc')
 ]
 
-rows = 7
+rows = 1
 
 
 if len(plot_data) % rows != 0:
@@ -234,9 +243,9 @@ def wm2str(wm):
     return m2str(wm2m(wm))
 
 
-aspect_ratio = 0.6
+aspect_ratio = 1.0
 
-fig, ax = plt.subplots(rows, cols, figsize=(6*cols, 6*aspect_ratio*rows), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4, left=0.2), subplot_kw={'aspect': aspect_ratio})
+fig, ax = plt.subplots(rows, cols, figsize=(6*cols, 6*aspect_ratio*rows), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4, left=0.2))#, subplot_kw={'aspect': aspect_ratio})
 
 ax_flat = ax.flatten()
     
@@ -280,11 +289,11 @@ for i, _plot_data in enumerate(plot_data):
     #cbar = plt.colorbar(mappable, ax=_ax, orientation='vertical')
     #cbar.ax.set_ylabel(color_info['label'])
 
-    shared_limx = np.array([-3.2, 0.5])
-    shared_limy = np.array([-1, 0]) * (shared_limx[1] - shared_limx[0]) * aspect_ratio + shared_limx[1]
-    shared_ticks = np.arange(-3, 1)
-    _ax.set_xlim(shared_limx)
-    _ax.set_ylim(shared_limy)
+    #shared_limx = np.array([-3.2, 0.5])
+    #shared_limy = np.array([-1, 0]) * (shared_limx[1] - shared_limx[0]) * aspect_ratio + shared_limx[1]
+    #shared_ticks = np.arange(-3, 1)
+    #_ax.set_xlim(shared_limx)
+    #_ax.set_ylim(shared_limy)
     #_ax.set_xticks(shared_ticks)
     #_ax.set_yticks(shared_ticks)
 

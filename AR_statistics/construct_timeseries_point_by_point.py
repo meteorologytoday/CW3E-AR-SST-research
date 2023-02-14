@@ -61,7 +61,31 @@ if total_days <= 0:
 
 
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", ]
-ECCO_varnames = ["MLT", "MXLDEPTH", "MLG_ttl", "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf", "MLG_hadv", "MLG_vadv", "MLG_hdiff", "MLG_vdiff"]
+ECCO_varnames = [
+    "dMLTdt",
+    "MLT",
+    "MXLDEPTH",
+    "MLG_ttl",
+    "MLG_frc_sw",
+    "MLG_frc_lw",
+    "MLG_frc_sh",
+    "MLG_frc_lh",
+    "MLG_frc_fwf",
+    "MLG_hadv",
+    "MLG_vadv",
+    "MLG_hdiff",
+    "MLG_vdiff",
+    "MLG_ent",
+    "MLG_rescale",
+    "MLD",
+    "dTdz_b",
+    "MLU",
+    "MLV",
+    "U_g",
+    "V_g",
+    "dMLTdx",
+    "dMLTdy",
+]
             
 ignored_months = [4, 5, 6, 7, 8, 9]
 
@@ -78,8 +102,8 @@ lat = None
 lon = None
 f_co = None
 
-computed_LLC_vars  = []
-computed_ERA5_vars = ["ERA5_MLG_ttl", ]
+computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
+computed_ERA5_vars = ["ERA5_MLG_ttl",]
 #        'ERA5_MLG_ttl', 'ERA5_MLG_frc', 'ERA5_sfc_hf', 'ERA5_MLG_ttl_exp', 'ERA5_MLG_ttl_uexp'
 #]
 
@@ -100,11 +124,32 @@ lon_rng = np.array(args.lon_rng) % 360
 
 def magicalExtension(_data):
     
-    _data['ERA5_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
-    _data['ERA5_MLG_ttl_exp']  = _data['ERA5_sfc_hf'] / (3996*1026 * _data['MLD'])
-    _data['ERA5_MLG_ttl_uexp'] = _data['ERA5_MLG_ttl'] - _data['ERA5_MLG_frc']
-
-
+    #_data['ERA5_sfc_hf']  = _data['msnswrf'] + _data['msnlwrf'] + _data['msshf'] + _data['mslhf']
+    #_data['ERA5_MLG_ttl_exp']  = _data['ERA5_sfc_hf'] / (3996*1026 * _data['MLD'])
+    #_data['ERA5_MLG_ttl_uexp'] = _data['ERA5_MLG_ttl'] - _data['ERA5_MLG_frc']
+    
+    _data["MLG_geo"]  = - ( _data["MLU"] * _data["dMLTdx"] + _data["MLV"] * _data["dMLTdy"] )
+    _data["MLG_ageo"] = - ( (_data["MLU"] - _data["U_g"]) * _data["dMLTdx"] + (_data["MLV"] - _data["V_g"]) * _data["dMLTdy"] )
+    _data["dTdz_b_over_h"] = _data["dTdz_b"] / _data["MLD"]
+    
+    _data['MLG_residue'] = _data['dMLTdt'] - (
+          _data['MLG_frc_sw']
+        + _data['MLG_frc_lw']
+        + _data['MLG_frc_sh']
+        + _data['MLG_frc_lh']
+        + _data['MLG_frc_fwf']
+        + _data['MLG_rescale']
+        + _data['MLG_hadv']
+        + _data['MLG_vadv']
+        + _data['MLG_hdiff']
+        + _data['MLG_vdiff']
+        + _data['MLG_ent']
+    )
+    
+    res = _data["MLG_residue"].to_numpy()
+    res_max = np.amax(np.abs(res[np.isfinite(res)]))
+    print("Max of abs(MLG_residue): ", res_max)
+    
 
 
 #mask_ERA5 = ds
@@ -114,6 +159,8 @@ ditch_this_wateryear = np.nan
 current_wateryear = np.nan
 
 for d, _t in enumerate(t_vec):
+
+    print("# Processing date: ", _t)
         
     _data = {}
             
@@ -273,7 +320,11 @@ for d, _t in enumerate(t_vec):
 
             print("Load `%s` from file: %s" % ( varname, ecco_filename, ))
 
-            ds_ECCO = xr.open_dataset(ecco_filename).isel(time=0)
+            if varname == "MLD":
+                ds_ECCO = xr.open_dataset(ecco_filename).isel(time_snp=0)
+                
+            else:
+                ds_ECCO = xr.open_dataset(ecco_filename).isel(time=0)
 
             if ecco_grid is None:
                 
@@ -315,7 +366,7 @@ for d, _t in enumerate(t_vec):
         continue
 
     # Add other vairables inside
-    # magicalExtension(_data)
+    magicalExtension(_data)
 
 
     for varname, var_data in _data.items():

@@ -109,11 +109,11 @@ for d in range(total_days):
         continue
  
     # We need extra days to compute dSST/dt
-    #if new_d.month == 4 and new_d.day != 1:
-    #    continue
+    if new_d.month == 4 and new_d.day != 1:
+        continue
  
-    #if new_d.month == 9 and new_d.day != 30:
-    #    continue
+    if new_d.month == 9 and new_d.day != 30:
+        continue
     
     jobs.append(JOB(new_d))
 
