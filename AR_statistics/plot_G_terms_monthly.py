@@ -39,14 +39,31 @@ print(plotted_varnames)
 ds = xr.open_dataset(args.input)
 
 MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf'] + ds['MLG_rescale']).rename('MLG_frc')
-MLG_nonfrc = (ds['MLG_ttl'] - MLG_frc).rename('MLG_nonfrc')
+MLG_nonfrc = (ds['dMLTdt'] - MLG_frc).rename('MLG_nonfrc')
 MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
 MLG_nonadv = (MLG_nonfrc - MLG_adv).rename('MLG_nonadv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
 MLG_nondiff = (MLG_nonfrc - MLG_diff).rename('MLG_nondiff')
 #MLG_MLB = (ds['MLG_vdiff'] + ds["MLG_ent"]).rename('MLG_MLB')
 
-MLG_res2 = (MLG_nonfrc - ds["MLG_vdiff"] - MLG_adv - ds["MLG_ent"]).rename('MLG_res2')
+MLG_res2 = (ds['dMLTdt'] - (
+      ds['MLG_frc_sw']
+    + ds['MLG_frc_lw']
+    + ds['MLG_frc_sh']
+    + ds['MLG_frc_lh']
+    + ds['MLG_frc_fwf']
+    + ds['MLG_rescale']
+    + ds["MLG_vdiff"]
+    + ds["MLG_hdiff"]
+    + ds["MLG_vadv"]
+    + ds["MLG_hadv"]
+    + ds["MLG_ent"]
+)).rename('MLG_res2')
+
+print(MLG_res2)
+
+print("RESIDUE: ", np.amax(np.abs(ds['MLG_residue'])))
+#MLG_res2 = (ds["MLG_residue"]).rename('MLG_res2')
 
 ds = xr.merge(
     [
@@ -254,7 +271,7 @@ for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
     
     _ax.set_xlim([0.5, 8.5])
 
-    _ax.legend(ncols=1, loc="center right", borderpad=0.1, labelspacing=0.1)
+    _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
 
 
 
