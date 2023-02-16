@@ -8,7 +8,7 @@ import date_tools, fmon_tools, domain_tools, NK_tools, KPP_tools, watertime_tool
 import earth_constants as ec
 from pathlib import Path
 import argparse
-import buoyancy_linear
+import map_divide_tools
 
 import xarray as xr
 import ECCO_helper
@@ -31,14 +31,15 @@ parser = argparse.ArgumentParser(
                     description = 'Plot prediction skill of GFS on AR.',
 )
 
-parser.add_argument('--beg-year', type=int, help='Date string: yyyy-mm-dd', required=True)
-parser.add_argument('--end-year', type=int, help='Date string: yyyy-mm-dd', required=True)
+parser.add_argument('--beg-year',   type=int, help='Date string: yyyy-mm-dd', required=True)
+parser.add_argument('--end-year',   type=int, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--output-dir', type=str, help='Output directory', default="")
-parser.add_argument('--lat-rng', type=float, nargs=2, help='Latitude  range', required=True)
-parser.add_argument('--lon-rng', type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--mask-ERA5', type=str, help='mask file of ERA5', required=True)
-parser.add_argument('--mask-ECCO', type=str, help='mask file of ECCO', required=True)
-#parser.add_argument('--mask', type=str, help='Mask file. Land=0, Ocean=1', required=True)
+parser.add_argument('--lat-rng',    type=float, nargs=2, help='Latitude  range', required=True)
+parser.add_argument('--lon-rng',    type=float, nargs=2, help='Longitude range. 0-360', required=True)
+parser.add_argument('--lat-nbox',   type=int, help='Latitude  range', required=True)
+parser.add_argument('--lon-nbox',   type=int, help='Longitude range. 0-360', required=True)
+parser.add_argument('--mask-ERA5',  type=str, help='mask file of ERA5', required=True)
+parser.add_argument('--mask-ECCO',  type=str, help='mask file of ECCO', required=True)
 
 args = parser.parse_args()
 
@@ -48,12 +49,13 @@ print(args)
 
 beg_date = datetime(args.beg_year-1, 10,  1 )
 end_date = datetime(args.end_year,    4,  1 )
-
 total_days = (end_date - beg_date).days
+
 t_vec = [ beg_date + timedelta(days=d) for d in range(total_days) ]
 t_vec_npdatetime = np.array(t_vec, dtype="datetime64[s]")
 
-
+lat_rng = np.array(args.lat_rng)
+lon_rng = np.array(args.lon_rng) % 360
 
 print("Beg: ", beg_date)
 print("End: ", end_date)
@@ -62,6 +64,15 @@ print("Total days: ", total_days)
 if total_days <= 0:
     raise Exception("No days are avaiable.")
 
+
+lon_bnds = [ args.lon_rng[0] + (args.lon_rng[1] - args.lon_rng[0]) / args.lon_nbox * i for i in range(args.lon_nbox+1)]
+lat_bnds = [ args.lat_rng[0] + (args.lat_rng[1] - args.lat_rng[0]) / args.lat_nbox * i for i in range(args.lat_nbox+1)]
+
+boxes = map_divide_tools.makeDividedBoxes(lon_bnds, lat_bnds)
+
+print("### List of divided boxes: ")
+for box in boxes:
+    print(box)
 
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", ]
 ECCO_varnames = [
@@ -106,25 +117,32 @@ lon = None
 f_co = None
 
 computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
-computed_ERA5_vars = ["ERA5_MLG_ttl",]
-#        'ERA5_MLG_ttl', 'ERA5_MLG_frc', 'ERA5_sfc_hf', 'ERA5_MLG_ttl_exp', 'ERA5_MLG_ttl_uexp'
-#]
+computed_ERA5_vars = []
 
+ts_datasets = [
 
-ts_ds = xr.Dataset(
-    { 
-        varname : (['time',], np.zeros((total_days,), dtype=np.float64)) 
-        for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars + ['data_good',] ) 
-    },
+    xr.Dataset(
+        { 
+            varname : (['time',], np.zeros((total_days,), dtype=np.float64)) 
+            for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars) 
+        },
 
-    coords = {
-        'time' : t_vec_npdatetime, 
-    },
+        coords = {
+            'time' : t_vec_npdatetime, 
+        },
+    ) 
+    
+    for b in range(len(boxes))
 
+]
+
+# Eventually, data_good will be merge with each dataset of each box
+data_good = xr.DataArray(
+    name = "data_good",
+    data =  np.zeros((total_days,), dtype=np.int32),
+    dims=["time",],
+    coords=dict(time=t_vec_npdatetime),
 )
-
-lat_rng = np.array(args.lat_rng)
-lon_rng = np.array(args.lon_rng) % 360
 
 def magicalExtension(_data):
     
@@ -170,7 +188,7 @@ for d, _t in enumerate(t_vec):
     I_have_all_data_for_today = True
     
     if _t.month in ignored_months:
-        ts_ds.data_good[d] = 0
+        data_good[d] = 0
         print("We do not need this time of data: ", _t)
         continue
         
@@ -221,14 +239,6 @@ for d, _t in enumerate(t_vec):
 
                 ERA5_wgts = np.cos(ERA5_lat * np.pi / 180)
 
-                ERA5_subset_idx = (
-                      ( ERA5_lat >= lat_rng[0] )
-                    & ( ERA5_lat <= lat_rng[1] )
-                    & ( ERA5_lon >= lon_rng[0] )
-                    & ( ERA5_lon <= lon_rng[1] )
-                    & ( mask_ERA5 == 1)
-                ) 
-
                 ERA5_grid = xr.Dataset(
                     { 
                         "llat" : (['lat', 'lon'], ERA5_lat), 
@@ -242,37 +252,27 @@ for d, _t in enumerate(t_vec):
                     },
                 )
 
-                ERA5_wgts = ERA5_grid.wgts.where(ERA5_subset_idx, other=0.0)
+                for b, box in enumerate(boxes):
+
+                    box['ERA5_subset_idx'] = (
+                          ( ERA5_lat >= box['polygon']['lat_bnds'][0] )
+                        & ( ERA5_lat <  box['polygon']['lat_bnds'][1] )
+                        & ( ERA5_lon >= box['polygon']['lon_bnds'][0] )
+                        & ( ERA5_lon <  box['polygon']['lon_bnds'][1] )
+                        & ( mask_ERA5 == 1)
+                    )
+
+                    if np.sum(box['ERA5_subset_idx']) == 0:
+                        print(box)
+                        raise Exception("ERROR: No point is selected in ECCO LLC grid.")
 
 
+                    box['ERA5_wgts'] = ERA5_grid.wgts.where(box['ERA5_subset_idx'], other=0.0).rename("ERA5_wgts")
 
-            _var = _var.where(ERA5_subset_idx)
 
-            """
-            with netCDF4.Dataset(info['filename'], "r") as ds:
-                
-                if ERA5_lat_raw is None:
-                   
-                    print("Coordinate loading...") 
-                    ERA5_lat_raw = ds.variables[info['varnames']['lat']][:]
-                    ERA5_lon_raw = ds.variables[info['varnames']['lon']][:] % 360.0
+            # Subset after
+            #_var = _var.where(ERA5_subset_idx)
 
-                    lat_rng = np.array(args.lat_rng)
-                    lon_rng = np.array(args.lon_rng) % 360
-                    
-                    lat_idx, lon_idx, wgt = domain_tools.detectIndexRange(ERA5_lat_raw, ERA5_lon_raw, lat_rng, lon_rng)
-
-                    lat = ERA5_lat_raw[lat_idx]
-                    lon = ERA5_lon_raw[lon_idx]
-                    wgt = np.cos(lat * np.pi / 180)
-
-                    mask = mask[lat_idx, :][:, lon_idx]
-
-                    print("Shape of mask: ", mask.shape)
-
-                    f_co = 2 * ec.Omega * np.sin(np.pi / 180 * lat)
-
-            """
             _data[load_varname] = _var.load()
 
         except Exception as e:
@@ -283,6 +283,7 @@ for d, _t in enumerate(t_vec):
             I_have_all_data_for_today = False
 
 
+    """
     # Special: compute dSST/dt as variable "dTdt"
     try:
 
@@ -311,7 +312,7 @@ for d, _t in enumerate(t_vec):
         I_have_all_data_for_today = False
 
     #del info
-
+    """
     ############ Loading ECCOv4 data ############
 
     try:
@@ -339,21 +340,29 @@ for d, _t in enumerate(t_vec):
 
                 ecco_lat = ecco_grid["YC"]
                 ecco_lon = ecco_grid["XC"] % 360
-                
-                ecco_subset_idx = (
-                    (ecco_lat >= lat_rng[0])
-                    & (ecco_lat <= lat_rng[1])
-                    & (ecco_lon <= lon_rng[0])
-                    & (ecco_lon <= lon_rng[1])
-                    & (mask_ECCO == 1)
-                )
 
-                if np.sum(ecco_subset_idx) == 0:
-                    raise Exception("ERROR: No point is selected in ECCO LLC grid.")
 
-                ecco_wgts = ecco_grid.rA.where(ecco_subset_idx, other=0.0)
+                for b, box in enumerate(boxes):
                 
-            ds_ECCO = ds_ECCO.where(ecco_subset_idx)
+                    poly = box['polygon']
+
+                    box['ecco_subset_idx'] = (
+                        (ecco_lat   >= poly['lat_bnds'][0])
+                        & (ecco_lat <  poly['lat_bnds'][1])
+                        & (ecco_lon >= poly['lon_bnds'][0])
+                        & (ecco_lon <  poly['lon_bnds'][1])
+                        & (mask_ECCO == 1)
+                    )
+
+                    if np.sum(box['ecco_subset_idx']) == 0:
+                        raise Exception("ERROR: No point is selected in ECCO LLC grid.")
+
+                    
+                    box['ecco_wgts'] = ecco_grid.rA.where(box['ecco_subset_idx'], other=0.0)
+
+
+            # subset afterwards   
+            #ds_ECCO = ds_ECCO.where(ecco_subset_idx)
             _data[varname] = ds_ECCO[varname].load()
 
     except Exception as e:
@@ -365,10 +374,10 @@ for d, _t in enumerate(t_vec):
 
 
     if I_have_all_data_for_today:
-        ts_ds['data_good'][d] = 1
+        data_good[d] = 1
 
     else:
-        ts_ds['data_good'][d] = 0
+        data_good[d] = 0
         print("Missing data for date: ", _t)
         ditch_this_wateryear = current_wateryear
         continue
@@ -377,39 +386,57 @@ for d, _t in enumerate(t_vec):
     magicalExtension(_data)
 
 
+    # Make average of each box
     for varname, var_data in _data.items():
+        for b, box in enumerate(boxes):
 
-        if (varname in ERA5_varnames) or (varname in computed_ERA5_vars): 
-            ts_ds[varname][d] = weightedAvg(var_data, ERA5_wgts)
+            ts_ds = ts_datasets[b]
+            if (varname in ERA5_varnames) or (varname in computed_ERA5_vars):
+                subset_idx_varname  = 'ERA5_subset_idx'
+                subset_wgts_varname = 'ERA5_wgts'
+                
+            elif (varname in ECCO_varnames) or (varname in computed_LLC_vars):
+                subset_idx_varname  = 'ecco_subset_idx'
+                subset_wgts_varname = 'ecco_wgts'
+
+            else:
+                raise Exception("Unknown variable : %s" % (varname,) )
+
+            #print(varname, ": ", subset_idx_varname, ", ", subset_wgts_varname)
+ 
+            _masked_data = var_data.where(box[subset_idx_varname])
+            _wgts        = box[subset_wgts_varname]  # already subsetted
             
-        elif (varname in ECCO_varnames) or (varname in computed_LLC_vars):
-            ts_ds[varname][d] = weightedAvg(var_data, ecco_wgts)
+            #print(_masked_data)
+            #print(_wgts)
 
-        else:
-            raise Exception("Unknown variable : %s" % (varname,) )
+            ts_ds[varname][d] = weightedAvg(_masked_data, _wgts)
 
-    print("Averaged Residue: ", ts_ds["MLG_residue"][d])
+            
+    for b in range(len(boxes)):
 
-    MLG_res2 = (ts_ds['dMLTdt'][d] - (
-          ts_ds['MLG_frc_sw'][d]
-        + ts_ds['MLG_frc_lw'][d]
-        + ts_ds['MLG_frc_sh'][d]
-        + ts_ds['MLG_frc_lh'][d]
-        + ts_ds['MLG_frc_fwf'][d]
-        + ts_ds['MLG_rescale'][d]
-        + ts_ds["MLG_vdiff"][d]
-        + ts_ds["MLG_hdiff"][d]
-        + ts_ds["MLG_vadv"][d]
-        + ts_ds["MLG_hadv"][d]
-        + ts_ds["MLG_ent"][d]
-    )).rename('MLG_res2')
-    
-    print("Averaged Residue - forced check: ", MLG_res2)
+        ts_ds = ts_datasets[b]
+
+        MLG_recheck = (ts_ds['dMLTdt'][d] - (
+              ts_ds['MLG_frc_sw'][d]
+            + ts_ds['MLG_frc_lw'][d]
+            + ts_ds['MLG_frc_sh'][d]
+            + ts_ds['MLG_frc_lh'][d]
+            + ts_ds['MLG_frc_fwf'][d]
+            + ts_ds['MLG_rescale'][d]
+            + ts_ds["MLG_vdiff"][d]
+            + ts_ds["MLG_hdiff"][d]
+            + ts_ds["MLG_vadv"][d]
+            + ts_ds["MLG_hadv"][d]
+            + ts_ds["MLG_ent"][d]
+        )).rename('MLG_recheck')
+
+        print("[box=%d][v=%s] Double check residue using averaged values: " % (b, varname), ts_ds["MLG_residue"].data[d])
 
 
 
 print("Exclude non-consecutive years")
-data_good_t = t_vec_npdatetime[ ts_ds.data_good == 1 ]
+data_good_t = t_vec_npdatetime[ data_good == 1 ]
 missing_dates = date_tools.findMissingDatetime(data_good_t, beg_date, end_date, timedelta(days=1))
 
 
@@ -418,13 +445,13 @@ rm_years = []
 needed_missing_dates = np.zeros((len(missing_dates),), dtype=bool)
 for i, missing_date in enumerate(missing_dates):
 
-    if missing_date.month in [11, 12]:#[10, 11, 12]:
+    if missing_date.month in [10, 11, 12]:
         
         rm_years.append(missing_date.year+1)
         needed_missing_dates[i] = True
 
 
-    elif missing_date.month in [1, 2]:#, 3]:
+    elif missing_date.month in [1, 2, 3]:
         
         rm_years.append(missing_date.year)
         needed_missing_dates[i] = True
@@ -450,25 +477,18 @@ marked_to_remove = np.ones((len(t_vec),), dtype=bool)
 for i, t in enumerate(t_vec):
     marked_to_remove[i] = t.year in rm_years
     
-ts_ds.data_good[marked_to_remove == True] = 0
+data_good[marked_to_remove == True] = 0
  
-
 
 print("Clear the data of the date if we do not have all the data of that date, or if any date in that winter is missing.")
 
-ts_ds = ts_ds.where(ts_ds.data_good == 1)
-#data_not_good_idx = (ts_ds.data_good ==)
-#for varname, var_data in ts.items():
-#    var_data[data_not_good_idx] = np.nan
 
-# produce decomposed data
-#data_decompose = {
-#    'clim' : {},
-#    'anom' : {},
-#}
 
-#for varname in ts_ds.keys():
-#    time_clim, data_decompose['clim'][varname], data_decompose['anom'][varname], cnt = anomalies.decomposeClimAnom(t_vec, ts[varname])
+
+print("Merge data_good into each dataset")
+data_good_idx = data_good == 1
+for i, ts_ds in enumerate(ts_datasets):
+    ts_datasets[i] = ts_ds.where(data_good_idx).merge(data_good)
 
 
 if args.output_dir != "":
@@ -476,10 +496,34 @@ if args.output_dir != "":
     print("Output directory: %s" % (args.output_dir,))
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
-    output_filename = "%s/AR_timeseries.nc" % (args.output_dir,)
+    for b in range(len(boxes)):
 
-    print("Output filename: %s" % ( output_filename, ))
-    ts_ds.to_netcdf(output_filename)
+        box = boxes[b]
+        ts_ds = ts_datasets[b]
+
+        output_filename = "%s/AR_timeseries_b%d.nc" % (args.output_dir, b)
+
+        print("[b=%d] Output filename: %s" % ( b, output_filename, ))
+        ts_ds.to_netcdf(output_filename)
+
+
+    with open("%s/box_info.txt" % (args.output_dir,), "w") as f:
+
+        f.write("Latitude  range: [%f, %f) \n" % (args.lat_rng[0],     args.lat_rng[1])) 
+        f.write("Longitude range: [%f, %f) \n" % (args.lon_rng[0]%360, args.lon_rng[1]%360)) 
+        
+        for b, box in enumerate(boxes):
+            f.write("box=%d, lat_min=%.2f, lat_max=%.2f, lon_min=%.2f, lon_max=%.2f, nsamples_atm=%d, nsamples_ocn=%d \n" % (
+                b,
+                box['polygon']['lat_bnds'][0],
+                box['polygon']['lat_bnds'][1],
+                box['polygon']['lon_bnds'][0],
+                box['polygon']['lon_bnds'][1],
+                np.sum(box['ERA5_subset_idx'].astype(int)),
+                np.sum(box['ecco_subset_idx'].astype(int)),
+            ))
+
+
 
     with open("%s/rm_years.txt" % (args.output_dir,), "w") as f:
         for y in rm_years:
