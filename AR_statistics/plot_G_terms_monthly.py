@@ -25,7 +25,7 @@ args = parser.parse_args()
 print(args)
 
 plotted_varnames = {
-    "atmocn" : ["MLG_ttl", "MLG_frc", "MLG_nonfrc"],
+    "atmocn" : ["dMLTdt", "MLG_frc", "MLG_nonfrc"],
     "atm" : ["MLG_frc", "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf"],
     "ocn" : ["MLG_nonfrc", "MLG_adv", "MLG_vdiff", "MLG_ent", "MLG_hdiff", "MLG_res2"],
 }[args.breakdown]
@@ -33,18 +33,13 @@ plotted_varnames = {
 print(plotted_varnames)
 
 
-
-
-
-ds = xr.open_dataset(args.input)
+ds = xr.open_dataset(args.input).astype(np.float64)
 
 MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf'] + ds['MLG_rescale']).rename('MLG_frc')
-MLG_nonfrc = (ds['dMLTdt'] - MLG_frc).rename('MLG_nonfrc')
+
 MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
-MLG_nonadv = (MLG_nonfrc - MLG_adv).rename('MLG_nonadv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
-MLG_nondiff = (MLG_nonfrc - MLG_diff).rename('MLG_nondiff')
-#MLG_MLB = (ds['MLG_vdiff'] + ds["MLG_ent"]).rename('MLG_MLB')
+MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
 
 MLG_res2 = (ds['dMLTdt'] - (
       ds['MLG_frc_sw']
@@ -63,7 +58,6 @@ MLG_res2 = (ds['dMLTdt'] - (
 print(MLG_res2)
 
 print("RESIDUE: ", np.amax(np.abs(ds['MLG_residue'])))
-#MLG_res2 = (ds["MLG_residue"]).rename('MLG_res2')
 
 ds = xr.merge(
     [
@@ -71,11 +65,7 @@ ds = xr.merge(
         MLG_frc,
         MLG_nonfrc,
         MLG_adv,
-        MLG_nonadv,
         MLG_diff,
-        MLG_nondiff,
-#        MLG_MLB,
-#        MLG_res,
         MLG_res2,
     ]
 )
@@ -130,16 +120,21 @@ ds_stats["AR-ARf"] = ds_stats["AR"] - ds_stats["ARf"]
 
 plot_infos = {
 
+    "dMLTdt" : {
+        "label" : "$\\dot{T}_\\mathrm{ttl}$",
+    },
+
+
     "MLG_ttl" : {
         "label" : "$\\dot{T}_\\mathrm{ttl}$",
     },
 
     "MLG_frc" : {
-        "label" : "$\\dot{T}_\\mathrm{atm}$",
+        "label" : "$\\dot{T}_\\mathrm{frc}$",
     },
 
     "MLG_nonfrc" : {
-        "label" : "$\\dot{T}_\\mathrm{ocn}$",
+        "label" : "$\\dot{T}_\\mathrm{nfrc}$",
     },
 
 
@@ -204,8 +199,28 @@ plot_infos_scnario = {
     },
 
     "AR-ARf" : {
-        "title" : "AR minus AR free"
+        "title" : "AR minus AR free",
     }
+
+}
+
+plot_ylim = {
+
+    "atmocn" : {
+        "mean" : [-1.5, 0.3],
+        "anom" : [-0.15, 0.02],
+    },
+
+    "atm" : {
+        "mean" : [-1.5, 1.5],
+        "anom" : [-0.12, 0.07],
+    },
+
+    "ocn" : {
+        "mean" : [-0.3, 0.4],
+        #"anom" : [-0.06, 0.01],
+        "anom" : [-0.12, 0.07],
+    },
 
 }
 
@@ -272,14 +287,13 @@ for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
     _ax.set_xlim([0.5, 8.5])
 
     _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
-
-
-
-for _ax in ax[:3, 0]:
-    _ax.set_ylim([-2, 0.5])
     
-ax[3, 0].set_ylim([-0.2, 0.05])
+    #if s in [0, 1, 2]:
+    #    _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
+    #else:
+    #    _ax.set_ylim(plot_ylim[args.breakdown]['anom'])
 
+    _ax.grid(True)
 
 if args.output != "":
    

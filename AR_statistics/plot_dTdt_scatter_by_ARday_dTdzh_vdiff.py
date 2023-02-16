@@ -35,6 +35,8 @@ MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
 
 MLG_nonfrc = (ds['dMLTdt'] - MLG_frc).rename('MLG_nonfrc')
 
+dTdz_b_over_MLD = (ds['dTdz_b'] / ds['MLD']).rename("dTdz_b_over_MLD")
+
 MLG_res2 = (ds['dMLTdt'] - (
       ds['MLG_frc_sw']
     + ds['MLG_frc_lw']
@@ -61,6 +63,7 @@ ds = xr.merge(
         MLG_adv,
         MLG_diff,
         MLG_res2,
+        dTdz_b_over_MLD,
     ]
 )
 
@@ -99,21 +102,45 @@ print("done")
 
 var_infos = {
 
+    'MLD' : {
+        'var'  : "h",
+        'unit' : "$ \\mathrm{m} $",
+    },
+
+    'MXLDEPTH' : {
+        'var'  : "MXLDEPTH",
+        'unit' : "$ \\mathrm{m} $",
+    },
+
+
+    'dTdz_b' : {
+        'var'  : "$\\partial T_\\mathrm{b} / \\partial z$",
+        'unit' : "$ \\mathrm{K} \\,/\\, \\mathrm{m} $",
+    },
+
+    'dTdz_b_over_MLD' : {
+        'var'  : "$\\partial T_\\mathrm{b} / \\partial z \\, / \\, h$",
+        'unit' : "$ \\mathrm{K} \\,/\\, \\mathrm{m} $",
+    },
+
+
+
+
     'MLG_MLB' : {
         'var'  : "$\\dot{T}_\\mathrm{ent} + \\dot{T}_\\mathrm{vdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
 
     'MLG_ent' : {
         'var'  : "$\\dot{T}_\\mathrm{ent}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
 
     'MLG_nondiff' : {
         'var'  : "$\\dot{T}_\\mathrm{nondiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
     'ttl_frc' : {
@@ -124,56 +151,34 @@ var_infos = {
 
     'MLG_vdiff' : {
         'var'  : "$\\dot{T}_\\mathrm{vdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
 
     'MLG_diff' : {
         'var'  : "$\\dot{T}_\\mathrm{diff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
     'MLG_hdiff' : {
         'var'  : "$\\dot{T}_\\mathrm{hdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-
-
-    'MLG_adv' : {
-        'var'  : "$\\dot{T}_\\mathrm{adv}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-    'MLG_nonadv' : {
-        'var'  : "$\\dot{T}_\\mathrm{nonadv}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-    'MLG_nonfrc' : {
-        'var'  : "$\\dot{T}_\\mathrm{nonfrc}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-    'MLG_ttl' : {
-        'var'  : "$\\dot{T}_\\mathrm{ttl}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-    'dMLTdt' : {
-        'var'  : "$\\dot{T}_\\mathrm{ttl}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
 
     'MLG_frc' : {
         'var'  : "$\\dot{T}_\\mathrm{frc}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
     'MLG_res' : {
         'var'  : "$\\dot{T}_\\mathrm{res}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
+    },
+
+    'MLG_adv' : {
+        'var'  : "$\\dot{T}_\\mathrm{adv}$",
+        'unit' : "$ \\mathrm{K} / \\mathrm{s} $",
     },
 
 
@@ -207,7 +212,9 @@ def plot_linregress(ax, X, Y, eq_x=0.1, eq_y=0.9, transform=None):
 
 
 plot_data = [
-    ('MLG_frc', 'MLG_nonfrc'), ('dMLTdt', 'MLG_frc'), ('dMLTdt', 'MLG_nonfrc')
+    ('MLG_vdiff', 'dTdz_b'),            ('MLG_frc', 'dTdz_b'),          ('MLG_frc', 'MLG_adv'),
+    ('MLG_vdiff', 'MLD'),               ('MLG_frc', 'MLD'),             None,
+    ('MLG_vdiff', 'dTdz_b_over_MLD'),   ('MLG_frc', 'dTdz_b_over_MLD'), None,
 ]
 
 rows = 3
@@ -259,7 +266,7 @@ def wm2str(wm):
 
 aspect_ratio = 0.8
 
-fig, ax = plt.subplots(rows, cols, figsize=(4*cols, 6*aspect_ratio*rows), squeeze=False, subplot_kw={'aspect': aspect_ratio}, constrained_layout=True)
+fig, ax = plt.subplots(rows, cols, figsize=(4*cols, 6*aspect_ratio*rows), squeeze=False, constrained_layout=True)#, subplot_kw={'aspect': aspect_ratio})#, constrained_layout=True)
 
 ax_flat = ax.flatten()
     
@@ -267,7 +274,7 @@ ax_flat = ax.flatten()
 
 #fig.suptitle("IVT range: [%d, %d]" % (args.IVT_rng[0], args.IVT_rng[1]))
 
-ax[0, 0].set_title("%s-%s" % (wm2str(np.amin(args.watermonths[0])), wm2str(np.amax(args.watermonths[-1]))))
+#ax[0, 0].set_title("%s-%s" % (wm2str(np.amin(args.watermonths[0])), wm2str(np.amax(args.watermonths[-1]))))
 
 
 
@@ -287,8 +294,8 @@ for i, _plot_data in enumerate(plot_data):
     _ax = ax_flat[i]
     
 
-    X = ds[var_X] * 1e6
-    Y = ds[var_Y] * 1e6
+    X = ds[var_X]
+    Y = ds[var_Y]
     Z = np.mod(watertime, 1)
     
     mappable =  _ax.scatter(X, Y, c = Z * color_info['factor'], s=1, cmap=color_info['cmap'], vmin=color_info['bnd'][0], vmax=color_info['bnd'][1], alpha=0.5)
@@ -296,30 +303,26 @@ for i, _plot_data in enumerate(plot_data):
 
     #plot_linregress(_ax, X, Y)
 
-    unit = "[ $ \\times 10^{-6} \\, \\mathrm{K} \\, / \\, \\mathrm{s} $ ]"
-    _ax.set_xlabel("%s %s" % (var_info_x['var'], unit))
-    _ax.set_ylabel("%s %s" % (var_info_y['var'], unit))
+    _ax.set_xlabel("%s [ %s ]" % (var_info_x['var'], var_info_x['unit']))
+    _ax.set_ylabel("%s [ %s ]" % (var_info_y['var'], var_info_y['unit']))
     
     cbar = plt.colorbar(mappable, ax=_ax, orientation='vertical')
     cbar.ax.set_ylabel(color_info['label'])
 
-    if i==0:
-        shared_limx = np.array([-2, 0.5])
-    else:
-        shared_limx = np.array([-3.2, 0.5])
+    #if i==0:
+    #    shared_limx = np.array([-2, 0.5])
+    #else:
+    #    shared_limx = np.array([-3.2, 0.5])
         
-    shared_limy = np.array([-1, 0]) * (shared_limx[1] - shared_limx[0]) * aspect_ratio + 0.5
+    #shared_limy = np.array([-1, 0]) * (shared_limx[1] - shared_limx[0]) * aspect_ratio + 0.5
     #shared_ticks = np.arange(-3, 1)
-    _ax.set_xlim(shared_limx)
-    _ax.set_ylim(shared_limy)
+    #_ax.set_xlim(shared_limx)
+    #_ax.set_ylim(shared_limy)
     #_ax.set_xticks(shared_ticks)
     #_ax.set_yticks(shared_ticks)
 
-    _ax.axvline(0, color="gray", ls="dashed", alpha=0.5)
-    _ax.axhline(0, color="gray", ls="dashed", alpha=0.5)
-
-    if i==1:
-        _ax.plot([-5, 5], [-5, 5], color="gray", ls="solid", alpha=0.5)
+    if _plot_data[1] in ["MXLDEPTH", "MLD"]:
+        _ax.invert_yaxis()
 
 for i, _ax in enumerate(ax_flat):
     
