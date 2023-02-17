@@ -18,6 +18,10 @@ spatial_rngs=(
     10 60 -160 -120  10 8
     48 52 -147 -143  1  1
 )
+spatial_rngs=(
+    10 60 -160 -120  10 8
+)
+
 nparms=6
 
 
@@ -139,6 +143,7 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
 
         output_img2=$output_dir/$( printf "fig2_b%d.png" $b )
 
+        output_img1axx=$output_dir/$( printf "fig1a_atmocn_b%d_xx.png" $b )
 
         python3 plot_G_terms_monthly.py --input $output_AR_file --breakdown atmocn --output $output_img1a --no-display &
         python3 plot_G_terms_monthly.py --input $output_AR_file --breakdown atm --output $output_img1b --no-display &

@@ -70,6 +70,48 @@ ds = xr.merge(
     ]
 )
 
+# Compute mean and anomaly
+def convertdt64todt(dt64):
+    return datetime.fromtimestamp( (dt64 - np.datetime64("1970-01-01")) / np.timedelta64(1, 's' ))
+ 
+ts_np64 = ds.time.to_numpy().astype("datetime64[s]")
+ts_dt   = ts_np64.astype(object)
+
+ds_mean = []
+ds_anom = []
+for _, varname in enumerate(ds.keys()):
+    
+    _var = ds[varname]
+    xs = _var.to_numpy()
+    
+    tm, xm, xa, cnt = anomalies.decomposeClimAnom(ts_dt, xs)
+
+    ds_mean.append(
+        xr.DataArray(
+            name = varname,
+            data = xm,
+            dims = ["time"],
+            coords = {
+                "time" : np.array(tm).astype("datetime64[ns]"),
+            }
+        )
+    )
+
+    ds_anom.append(
+        xr.DataArray(
+            name = varname,
+            data = xa,
+            dims = ["time"],
+            coords = {
+                "time" : ts_np64,
+            }
+        )
+    )
+
+
+ds_anom = xr.merge(ds_anom)
+ds_mean = xr.merge(ds_mean)
+
 # Construct
 t_months = np.arange(1, 7)
 
@@ -79,6 +121,7 @@ for condition_name, (IVT_min, IVT_max) in [
     ("clim",  (0, np.inf)),
     ("ARf",   (0, 250)),
     ("AR",    (250, np.inf)),
+    ("AR+ARf",    (None, None)),
 ]:
 
     _tmp = {}
@@ -100,7 +143,29 @@ for condition_name, (IVT_min, IVT_max) in [
         
         #print("m = ", m, "; wm = ", watertime_tools.wm2m(m))
         
-        _ds = ds.where(ds.time.dt.month.isin(watertime_tools.wm2m(m))).where((ds.IVT >= IVT_min) & (ds.IVT < IVT_max))
+        if condition_name == "clim":
+            _ds_ref = ds
+            _cond = _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
+ 
+        elif condition_name == "AR+ARf":
+            _ds_ref = ds_anom
+            _cond = _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
+        
+        elif condition_name in ["AR", "ARf"]:
+            _ds_ref = ds_anom
+            _cond = (
+                  ( ds.IVT >= IVT_min ) 
+                & ( ds.IVT <  IVT_max ) 
+                & _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
+            )
+   
+        else:
+            raise Exception("Unknown condition_name: ", condition_name) 
+
+        print("Conditon %s : cnt = %d, wm = %d" % (condition_name, np.sum(_cond), m))
+
+        _ds = _ds_ref.where(_cond)
+        #_ds = _ds_ref
             
         for varname, _ in ds_stat.items():
 
@@ -207,7 +272,7 @@ plot_infos_scnario = {
 plot_ylim = {
 
     "atmocn" : {
-        "mean" : [-1.5, 0.1],
+        "mean" : [-1.5, 1.5],
         "anom" : [-0.7, 0.7],
     },
 
@@ -245,7 +310,7 @@ from scipy.stats import linregress
 
 print("done")
 
-fig, ax = plt.subplots(4, 1, figsize=(6, 8), squeeze=False, constrained_layout=True)# gridspec_kw = dict(hspace=0.3, wspace=0.4))
+fig, ax = plt.subplots(2, 1, figsize=(6, 8), squeeze=False, constrained_layout=True)# gridspec_kw = dict(hspace=0.3, wspace=0.4))
 
 if args.title == "":
     fig.suptitle(args.input)
@@ -255,7 +320,7 @@ else:
 bar_width = 0.8 / len(plotted_varnames) #0.15
 
 
-for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
+for s, sname in enumerate(["clim", "AR-ARf"]):
 
     ds_stat = ds_stats[sname]
     
@@ -263,14 +328,26 @@ for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
 
     for i, varname in enumerate(plotted_varnames):
 
-        _data = ds_stat[varname]
+        _data = ds_stat[varname].to_numpy()
         _ax.bar(t_months + i*bar_width, _data[:, 0],   bar_width, label=plot_infos[varname]['label'])
 
 
-        if sname != "AR-ARf":
-            for m, t_month in enumerate(t_months): 
-                _ax.plot([t_month + i*bar_width]*2, [_data[m, 1], _data[m, 2]], "k-") 
-                #_ax.scatter([t_month + i*bar_width]*2, [_data[m, 3], _data[m, 4]], s=10, c="red") 
+        _anom_ARpARf_data = ds_stats["AR+ARf"][varname].to_numpy()
+        _anom_AR_data = ds_stats["AR"][varname].to_numpy()
+        _anom_ARf_data = ds_stats["ARf"][varname].to_numpy()
+        _mean_data = ds_stats["clim"][varname].to_numpy()
+
+        # error bar
+        _error_bar_lower = _anom_ARpARf_data[:, 1]
+        _error_bar_upper = _anom_ARpARf_data[:, 2]
+        _offset = _data[:, 0]
+
+        for m, t_month in enumerate(t_months): 
+            _ax.plot(
+                [t_month + i*bar_width]*2,
+                np.array([_error_bar_lower[m], _error_bar_upper]) + _offset[m],
+                "k-",
+            )
 
     _ax.set_xticks(t_months)
     _ax.set_xticklabels(np.vectorize(watertime_tools.wm2m)(t_months))
@@ -288,7 +365,7 @@ for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
 
     _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
     
-    if s in [0, 1, 2]:
+    if s in [0, ]:
         _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
     else:
         _ax.set_ylim(plot_ylim[args.breakdown]['anom'])

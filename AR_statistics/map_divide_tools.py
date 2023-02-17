@@ -4,7 +4,6 @@ def makeDividedBoxes(lon_bnds, lat_bnds):
     
     Nx = len(lon_bnds) - 1
     Ny = len(lat_bnds) - 1
-    
 
     boxes = []
 

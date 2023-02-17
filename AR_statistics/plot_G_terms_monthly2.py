@@ -18,25 +18,46 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--input', type=str, help='Input file', required=True)
 parser.add_argument('--output', type=str, help='Output file', default="")
-parser.add_argument('--IVT-rng', type=float, nargs=2, help='Threshold of IVT to determin AR condition.', default=[250.0, np.inf])
+parser.add_argument('--title', type=str, help='Output title', default="")
+parser.add_argument('--breakdown', type=str, help='Output title', default="atmocn", choices=["atmocn", "atm", "ocn"])
 parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
 
+plotted_varnames = {
+    "atmocn" : ["dMLTdt", "MLG_frc", "MLG_nonfrc"],
+    "atm" : ["MLG_frc", "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf"],
+    "ocn" : ["MLG_nonfrc", "MLG_adv", "MLG_vdiff", "MLG_ent", "MLG_hdiff", "MLG_res2"],
+}[args.breakdown]
 
-ds = xr.open_dataset(args.input)
+print(plotted_varnames)
 
-#MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf']).rename('MLG_frc')
-MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh']).rename('MLG_frc')
-MLG_nonfrc = (ds['MLG_ttl'] - MLG_frc).rename('MLG_nonfrc')
+
+ds = xr.open_dataset(args.input).astype(np.float64)
+
+MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf'] + ds['MLG_rescale']).rename('MLG_frc')
+
 MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
-MLG_nonadv = (MLG_nonfrc - MLG_adv).rename('MLG_nonadv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
-MLG_nondiff = (MLG_nonfrc - MLG_diff).rename('MLG_nondiff')
-#MLG_MLB = (ds['MLG_vdiff'] + ds["MLG_ent"]).rename('MLG_MLB')
+MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
 
-#MLG_res = (ds['MLG_ttl'] - MLG_frc - ds["MLG_ent"] - MLG_diff - MLG_adv).rename('MLG_res')
-MLG_res2 = (ds['MLG_ttl'] - MLG_frc - ds["MLG_vdiff"] - MLG_adv).rename('MLG_res2')
+MLG_res2 = (ds['dMLTdt'] - (
+      ds['MLG_frc_sw']
+    + ds['MLG_frc_lw']
+    + ds['MLG_frc_sh']
+    + ds['MLG_frc_lh']
+    + ds['MLG_frc_fwf']
+    + ds['MLG_rescale']
+    + ds["MLG_vdiff"]
+    + ds["MLG_hdiff"]
+    + ds["MLG_vadv"]
+    + ds["MLG_hadv"]
+    + ds["MLG_ent"]
+)).rename('MLG_res2')
+
+print(MLG_res2)
+
+print("RESIDUE: ", np.amax(np.abs(ds['MLG_residue'])))
 
 ds = xr.merge(
     [
@@ -44,132 +65,164 @@ ds = xr.merge(
         MLG_frc,
         MLG_nonfrc,
         MLG_adv,
-        MLG_nonadv,
         MLG_diff,
-        MLG_nondiff,
-#        MLG_MLB,
-#        MLG_res,
         MLG_res2,
     ]
 )
 
 # Construct
 t_months = np.arange(1, 7)
-ds_stat = xr.Dataset(
 
-    {
-        "MLG_ttl"   : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-        "MLG_frc"   : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-        "MLG_nonfrc"   : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-        "MLG_adv"   : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-        "MLG_vdiff" : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-        "MLG_res2"   : (["time", "stat"], np.zeros((len(t_months), 5)) ),
-    },
+ds_stats = {}
 
-    coords = {
-        "time" : t_months,
-        "stat" : ["mean", "q25", "q75", "q10", "q90"]
-    }
-)
+for condition_name, (IVT_min, IVT_max) in [
+    ("clim",  (0, np.inf)),
+    ("ARf",   (0, 250)),
+    ("AR",    (250, np.inf)),
+]:
 
-for t, m in enumerate(t_months): 
-    
-    print("m = ", m, "; wm = ", watertime_tools.wm2m(m))
-    
-    _ds = ds.where(ds.time.dt.month.isin(watertime_tools.wm2m(m))).where((ds.IVT >= args.IVT_rng[0]) & (ds.IVT < args.IVT_rng[1]) & (ds.MLG_ttl < 5e-6))
+    _tmp = {}
+    for varname, _ in ds.items():
+        _tmp[varname] = (["time", "stat"], np.zeros((len(t_months), 5)) )
+
+    ds_stat = xr.Dataset(
+        _tmp,
+
+        coords = {
+            "time" : t_months,
+            "stat" : ["mean", "q25", "q75", "q10", "q90"]
+        }
+    )
+
+    ds_stats[condition_name] = ds_stat
+
+    for t, m in enumerate(t_months): 
         
-    for varname, _ in ds_stat.items():
-
-        #print(var[np.isfinite(var)])
-        #print(np.nanquantile(var, [0.0, .25, .5, .75, 1.0]))
-        _data = _ds[varname] * 1e6
-        ds_stat[varname][t, 0] = np.nanmean(_data)
-        ds_stat[varname][t, 1] = np.nanquantile(_data, .25)
-        ds_stat[varname][t, 2] = np.nanquantile(_data, .75)
-        ds_stat[varname][t, 3] = np.nanquantile(_data, .10)
-        ds_stat[varname][t, 4] = np.nanquantile(_data, .90)
+        #print("m = ", m, "; wm = ", watertime_tools.wm2m(m))
         
-print(ds_stat)
+        _ds = ds.where(ds.time.dt.month.isin(watertime_tools.wm2m(m))).where((ds.IVT >= IVT_min) & (ds.IVT < IVT_max))
+            
+        for varname, _ in ds_stat.items():
+
+            _data = _ds[varname] * 1e6
+            ds_stat[varname][t, 0] = np.nanmean(_data)
+            ds_stat[varname][t, 1] = np.nanquantile(_data, .25)
+            ds_stat[varname][t, 2] = np.nanquantile(_data, .75)
+            ds_stat[varname][t, 3] = np.nanquantile(_data, .10)
+            ds_stat[varname][t, 4] = np.nanquantile(_data, .90)
+            
+
+    print(IVT_min, " - ", IVT_max)
+
+ds_stats["AR-ARf"] = ds_stats["AR"] - ds_stats["ARf"]
 
 
-var_infos = {
 
-    'MLG_MLB' : {
-        'var'  : "$\\dot{T}_\\mathrm{ent} + \\dot{T}_\\mathrm{vdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : "green",
+plot_infos = {
+
+    "dMLTdt" : {
+        "label" : "$\\dot{T}_\\mathrm{ttl}$",
     },
 
 
-    'MLG_ent' : {
-        'var'  : "$\\dot{T}_\\mathrm{ent}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    "MLG_ttl" : {
+        "label" : "$\\dot{T}_\\mathrm{ttl}$",
+    },
+
+    "MLG_frc" : {
+        "label" : "$\\dot{T}_\\mathrm{frc}$",
+    },
+
+    "MLG_nonfrc" : {
+        "label" : "$\\dot{T}_\\mathrm{nfrc}$",
     },
 
 
-    'MLG_nondiff' : {
-        'var'  : "$\\dot{T}_\\mathrm{nondiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    "MLG_frc_lw" : {
+        "label" : "$\\dot{T}_\\mathrm{lw}$",
     },
 
-    'MLG_vdiff' : {
-        'var'  : "$\\dot{T}_\\mathrm{vdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : 'pink'
+    "MLG_frc_sw" : {
+        "label" : "$\\dot{T}_\\mathrm{sw}$",
     },
 
-
-    'MLG_diff' : {
-        'var'  : "$\\dot{T}_\\mathrm{diff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    "MLG_frc_lh" : {
+        "label" : "$\\dot{T}_\\mathrm{lh}$",
     },
 
-    'MLG_hdiff' : {
-        'var'  : "$\\dot{T}_\\mathrm{hdiff}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    "MLG_frc_sh" : {
+        "label" : "$\\dot{T}_\\mathrm{sh}$",
     },
 
-
-
-    'MLG_adv' : {
-        'var'  : "$\\dot{T}_\\mathrm{adv}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : "darkorange",
-    },
-
-    'MLG_nonadv' : {
-        'var'  : "$\\dot{T}_\\mathrm{nonadv}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-    },
-
-    'MLG_nonfrc' : {
-        'var'  : "$\\dot{T}_\\mathrm{nonfrc}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : "blue",
+    "MLG_frc_fwf" : {
+        "label" : "$\\dot{T}_\\mathrm{fwf}$",
     },
 
 
-
-    'MLG_ttl' : {
-        'var'  : "$\\dot{T}_\\mathrm{ttl}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : "black",
+    "MLG_adv" : {
+        "label" : "$\\dot{T}_\\mathrm{adv}$",
     },
 
-    'MLG_frc' : {
-        'var'  : "$\\dot{T}_\\mathrm{shf}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
-        'lc' : "red",
+    "MLG_vdiff" : {
+        "label" : "$\\dot{T}_\\mathrm{vdiff}$",
     },
 
-    'MLG_res' : {
-        'var'  : "$\\dot{T}_\\mathrm{res}$",
-        'unit' : "$ \\mathrm{T} / \\mathrm{s} $",
+    "MLG_ent" : {
+        "label" : "$\\dot{T}_\\mathrm{ent}$",
     },
+
+    "MLG_hdiff" : {
+        "label" : "$\\dot{T}_\\mathrm{hdiff}$",
+    },
+
+
+    "MLG_res2" : {
+        "label" : "$\\dot{T}_\\mathrm{res}$",
+    },
+
 
 
 }
 
+plot_infos_scnario = {
+
+    "clim" : {
+        "title" : "All",
+    },
+
+    "AR" : {
+        "title" : "AR",
+    },
+
+    "ARf" : {
+        "title" : "AR free",
+    },
+
+    "AR-ARf" : {
+        "title" : "AR minus AR free",
+    }
+
+}
+
+plot_ylim = {
+
+    "atmocn" : {
+        "mean" : [-1.5, 0.1],
+        "anom" : [-0.7, 0.7],
+    },
+
+    "atm" : {
+        "mean" : [-1.5, 1.5],
+        "anom" : [-0.3, 0.7],
+    },
+
+    "ocn" : {
+        "mean" : [-0.5, 0.5],
+        #"anom" : [-0.06, 0.01],
+        "anom" : [-0.5, 0.5],
+    },
+
+}
 
 # Plot data
 print("Loading Matplotlib...")
@@ -178,8 +231,8 @@ if args.no_display is False:
     mpl.use('TkAgg')
 else:
     mpl.use('Agg')
-    mpl.rc('font', size=20)
-    mpl.rc('axes', labelsize=15)
+    #mpl.rc('font', size=20)
+    #mpl.rc('axes', labelsize=15)
      
  
   
@@ -192,29 +245,55 @@ from scipy.stats import linregress
 
 print("done")
 
+fig, ax = plt.subplots(4, 1, figsize=(6, 8), squeeze=False, constrained_layout=True)# gridspec_kw = dict(hspace=0.3, wspace=0.4))
 
-fig, ax = plt.subplots(1, 1, figsize=(6, 4), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4))
+if args.title == "":
+    fig.suptitle(args.input)
+else:
+    fig.suptitle(args.title)
+
+bar_width = 0.8 / len(plotted_varnames) #0.15
 
 
-fig.suptitle(args.input)
+for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
 
-bar_width = 0.15
+    ds_stat = ds_stats[sname]
+    
+    _ax = ax[s, 0]
 
-#for i, varname in enumerate(["MLG_ttl", "MLG_frc", "MLG_adv", "MLG_vdiff", "MLG_res2"]):
-for i, varname in enumerate(["MLG_ttl", "MLG_frc", "MLG_nonfrc"]):
+    for i, varname in enumerate(plotted_varnames):
 
-    _data = ds_stat[varname]
-    ax[0, 0].bar(t_months + i*bar_width, _data[:, 0],   bar_width, label=varname)
+        _data = ds_stat[varname]
+        _ax.bar(t_months + i*bar_width, _data[:, 0],   bar_width, label=plot_infos[varname]['label'])
 
-    for m, t_month in enumerate(t_months): 
-        ax[0, 0].plot([t_month + i*bar_width]*2, [_data[m, 1], _data[m, 2]], "k-") 
-        ax[0, 0].scatter([t_month + i*bar_width]*2, [_data[m, 3], _data[m, 4]], s=10, c="red") 
 
-ax[0, 0].set_xticks(t_months)
-ax[0, 0].set_xticklabels(np.vectorize(watertime_tools.wm2m)(t_months))
+        if sname != "AR-ARf":
+            for m, t_month in enumerate(t_months): 
+                _ax.plot([t_month + i*bar_width]*2, [_data[m, 1], _data[m, 2]], "k-") 
+                #_ax.scatter([t_month + i*bar_width]*2, [_data[m, 3], _data[m, 4]], s=10, c="red") 
 
-ax[0, 0].set_xlabel("Month")
-ax[0, 0].set_ylabel("[ $ 1 \\times 10^{-6} \\mathrm{K} \\, / \\, \\mathrm{s} $ ]")
+    _ax.set_xticks(t_months)
+    _ax.set_xticklabels(np.vectorize(watertime_tools.wm2m)(t_months))
+
+    _ax.set_xlabel("Month")
+    _ax.set_ylabel("[ $ 1 \\times 10^{-6} \\mathrm{K} \\, / \\, \\mathrm{s} $ ]")
+
+    _ax.set_title("(%s) %s " % (
+        "abcdefghijklmn"[s],
+        plot_infos_scnario[sname]['title'],
+    ))
+
+    
+    _ax.set_xlim([0.5, 8.5])
+
+    _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
+    
+    if s in [0, 1, 2]:
+        _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
+    else:
+        _ax.set_ylim(plot_ylim[args.breakdown]['anom'])
+
+    _ax.grid(True)
 
 if args.output != "":
    

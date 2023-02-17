@@ -66,8 +66,8 @@ if total_days <= 0:
     raise Exception("No days are avaiable.")
 
 
-lon_bnds = [ args.lon_rng[0] + (args.lon_rng[1] - args.lon_rng[0]) / args.lon_nbox * i for i in range(args.lon_nbox+1)]
-lat_bnds = [ args.lat_rng[0] + (args.lat_rng[1] - args.lat_rng[0]) / args.lat_nbox * i for i in range(args.lat_nbox+1)]
+lon_bnds = np.array([ lon_rng[0] + (lon_rng[1] - lon_rng[0]) / args.lon_nbox * i for i in range(args.lon_nbox+1)])
+lat_bnds = np.array([ lat_rng[0] + (lat_rng[1] - lat_rng[0]) / args.lat_nbox * i for i in range(args.lat_nbox+1)])
 
 boxes = map_divide_tools.makeDividedBoxes(lon_bnds, lat_bnds)
 
@@ -136,6 +136,49 @@ ts_datasets = [
     for b in range(len(boxes))
 
 ]
+
+full_dataset = [
+
+    xr.Dataset(
+        { 
+            varname : (['time', 'lat', 'lon', ], np.zeros((total_days, len(lat_bnds)-1, len(lon_bnds)-1), dtype=np.float64)) 
+            for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars) 
+        },
+
+        coords = {
+            'time' : t_vec_npdatetime,
+            'lat'  : (lat_bnds[:-1] + lat_bnds[1:]) / 2,
+            'lon'  : (lon_bnds[:-1] + lon_bnds[1:]) / 2,
+        },
+    ) 
+    
+    for b in range(len(boxes))
+
+]
+
+box_number = np.zeros((len(lat_bnds)-1, len(lon_bnds)-1), dtype=np.int32)
+    
+for i in range(box_number.shape[1]):
+    for j in range(box_number.shape[0]):
+        box_number[j, i] = boxes[j + i*box_number.shape[0]]
+
+full_dataset.append(
+    xr.Dataset(
+        { 
+            "box_number" : (['time', 'lat', 'lon', ], box_number),
+        },
+        coords = {
+            'lat'  : (lat_bnds[:-1] + lat_bnds[1:]) / 2,
+            'lon'  : (lon_bnds[:-1] + lon_bnds[1:]) / 2,
+            'lat_bnds' : lat_bnds,
+            'lon_bnds' : lon_bnds,
+        },
+    ) 
+)
+
+full_dataset = xr.merge(full_dataset)
+
+full_dataset.to_netcdf("test.nc")
 
 # Eventually, data_good will be merge with each dataset of each box
 data_good = xr.DataArray(
@@ -519,6 +562,10 @@ if args.output_dir != "":
 
         print("[b=%d] Output filename: %s" % ( b, output_filename, ))
         ts_ds.to_netcdf(output_filename)
+
+    # Merge boxes into a single netcdf file
+    
+    
 
 
     with open("%s/box_info.txt" % (args.output_dir,), "w") as f:
