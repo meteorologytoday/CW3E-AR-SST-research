@@ -15,7 +15,7 @@ end_year=2017
 
 # format: lat_m lat_M lon_m lon_M lat_nbox lon_nbox
 spatial_rngs=(
-    30 50 -160 -130  4  6
+    10 60 -160 -120  10 8
     48 52 -147 -143  1  1
 )
 nparms=6
@@ -80,6 +80,7 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
                 --lon-nbox $lon_nbox \
                 --mask-ERA5 $mask_ERA5 \
                 --mask-ECCO $mask_ECCO \
+                --ignore-empty-box \
                 --output-dir $output_dir
         fi
 
