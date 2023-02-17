@@ -207,19 +207,19 @@ plot_infos_scnario = {
 plot_ylim = {
 
     "atmocn" : {
-        "mean" : [-1.5, 0.3],
-        "anom" : [-0.15, 0.02],
+        "mean" : [-1.5, 0.1],
+        "anom" : [-0.7, 0.7],
     },
 
     "atm" : {
         "mean" : [-1.5, 1.5],
-        "anom" : [-0.12, 0.07],
+        "anom" : [-0.3, 0.7],
     },
 
     "ocn" : {
-        "mean" : [-0.3, 0.4],
+        "mean" : [-0.5, 0.5],
         #"anom" : [-0.06, 0.01],
-        "anom" : [-0.12, 0.07],
+        "anom" : [-0.5, 0.5],
     },
 
 }
@@ -231,8 +231,8 @@ if args.no_display is False:
     mpl.use('TkAgg')
 else:
     mpl.use('Agg')
-    mpl.rc('font', size=20)
-    mpl.rc('axes', labelsize=15)
+    #mpl.rc('font', size=20)
+    #mpl.rc('axes', labelsize=15)
      
  
   
@@ -288,10 +288,10 @@ for s, sname in enumerate(["clim", "AR", "ARf", "AR-ARf"]):
 
     _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
     
-    #if s in [0, 1, 2]:
-    #    _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
-    #else:
-    #    _ax.set_ylim(plot_ylim[args.breakdown]['anom'])
+    if s in [0, 1, 2]:
+        _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
+    else:
+        _ax.set_ylim(plot_ylim[args.breakdown]['anom'])
 
     _ax.grid(True)
 

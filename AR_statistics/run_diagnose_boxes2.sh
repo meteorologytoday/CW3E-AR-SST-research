@@ -26,12 +26,12 @@ mask_ECCO="mask_ECCO.nc"
 
 if [ ! -f "$mask_ECCO" ]; then
     echo "Mask file $mask_ECCO does not exist. Generating now..."
-    python3 make_mask_ECCO.py
+    #python3 make_mask_ECCO.py
 fi
 
 if [ ! -f "$mask_ERA5" ]; then
     echo "Mask file $mask_ERA5 does not exist. Generating now..."
-    python3 make_mask_ERA5.py
+    #python3 make_mask_ERA5.py
 fi
 
 if [ ] ; then
@@ -83,6 +83,7 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
                 --output-dir $output_dir
         fi
 
+        if [ ] ; then
         output_img=$output_dir/$( printf "fig_dTdt_pdf_AR_b%d.png" $b )
         python3 plot_dTdt_pdf.py --input $output_AR_file \
             --IVT-rng 250 1e5 \
@@ -129,6 +130,22 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
             --watermonths 4 5 6 \
             --no-display
 
+        fi
+        
+        output_img1a=$output_dir/$( printf "fig1a_atmocn_b%d.png" $b )
+        output_img1b=$output_dir/$( printf "fig1a_atm_b%d.png" $b )
+        output_img1c=$output_dir/$( printf "fig1a_ocn_b%d.png" $b )
+
+        output_img2=$output_dir/$( printf "fig2_b%d.png" $b )
+
+
+        python3 plot_G_terms_monthly.py --input $output_AR_file --breakdown atmocn --output $output_img1a --no-display &
+        python3 plot_G_terms_monthly.py --input $output_AR_file --breakdown atm --output $output_img1b --no-display &
+        python3 plot_G_terms_monthly.py --input $output_AR_file --breakdown ocn --output $output_img1c --no-display &
+
+        python3 plot_dTdt_scatter_by_ARday_frc_nonfrc.py --input $output_AR_file --output $output_img2 --no-display &
+
+        wait
 
     done
 
