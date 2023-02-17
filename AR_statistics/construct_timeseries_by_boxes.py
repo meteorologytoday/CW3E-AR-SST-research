@@ -40,6 +40,7 @@ parser.add_argument('--lat-nbox',   type=int, help='Latitude  range', required=T
 parser.add_argument('--lon-nbox',   type=int, help='Longitude range. 0-360', required=True)
 parser.add_argument('--mask-ERA5',  type=str, help='mask file of ERA5', required=True)
 parser.add_argument('--mask-ECCO',  type=str, help='mask file of ECCO', required=True)
+parser.add_argument('--ignore-empty-box',  action="store_true")
 
 args = parser.parse_args()
 
@@ -262,10 +263,12 @@ for d, _t in enumerate(t_vec):
                         & ( mask_ERA5 == 1)
                     )
 
-                    if np.sum(box['ERA5_subset_idx']) == 0:
-                        print(box)
-                        raise Exception("ERROR: No point is selected in ECCO LLC grid.")
-
+                    box['empty_ERA5'] = np.sum(box['ERA5_subset_idx']) == 0
+                    if box['empty_ERA5']:
+                        if args.ignore_empty_box:
+                            print("[ERA5] Ignore empty box: %d" % (b,))
+                        else:
+                            raise Exception("ERROR: No point is selected in ERA5 latlon grid.")
 
                     box['ERA5_wgts'] = ERA5_grid.wgts.where(box['ERA5_subset_idx'], other=0.0).rename("ERA5_wgts")
 
@@ -353,9 +356,14 @@ for d, _t in enumerate(t_vec):
                         & (ecco_lon <  poly['lon_bnds'][1])
                         & (mask_ECCO == 1)
                     )
+                    
+                    box['empty_ecco'] = np.sum(box['ecco_subset_idx']) == 0
 
-                    if np.sum(box['ecco_subset_idx']) == 0:
-                        raise Exception("ERROR: No point is selected in ECCO LLC grid.")
+                    if box['empty_ecco']:
+                        if args.ignore_empty_box:
+                            print("[ECCO] Ignore empty box: %d" % (b,))
+                        else:
+                            raise Exception("ERROR: No point is selected in ECCO LLC grid.")
 
                     
                     box['ecco_wgts'] = ecco_grid.rA.where(box['ecco_subset_idx'], other=0.0)
@@ -390,6 +398,9 @@ for d, _t in enumerate(t_vec):
     for varname, var_data in _data.items():
         for b, box in enumerate(boxes):
 
+            if box['empty_ecco'] or box['empty_ERA5']:
+                continue
+
             ts_ds = ts_datasets[b]
             if (varname in ERA5_varnames) or (varname in computed_ERA5_vars):
                 subset_idx_varname  = 'ERA5_subset_idx'
@@ -414,6 +425,9 @@ for d, _t in enumerate(t_vec):
 
             
     for b in range(len(boxes)):
+
+        if box['empty_ecco'] or box['empty_ERA5']:
+            continue
 
         ts_ds = ts_datasets[b]
 
@@ -513,8 +527,9 @@ if args.output_dir != "":
         f.write("Longitude range: [%f, %f) \n" % (args.lon_rng[0]%360, args.lon_rng[1]%360)) 
         
         for b, box in enumerate(boxes):
-            f.write("box=%d, lat_min=%.2f, lat_max=%.2f, lon_min=%.2f, lon_max=%.2f, nsamples_atm=%d, nsamples_ocn=%d \n" % (
+            f.write("box=%d, label=%s, lat_min=%.2f, lat_max=%.2f, lon_min=%.2f, lon_max=%.2f, nsamples_atm=%d, nsamples_ocn=%d \n" % (
                 b,
+                box['label'],
                 box['polygon']['lat_bnds'][0],
                 box['polygon']['lat_bnds'][1],
                 box['polygon']['lon_bnds'][0],

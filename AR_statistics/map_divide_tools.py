@@ -10,8 +10,9 @@ def makeDividedBoxes(lon_bnds, lat_bnds):
 
     n = 0
 
-    for j in range(Ny):
-        for i in range(Nx):
+    for i in range(Nx):
+        for j in range(Ny):
+
             
             boxes.append({
                 "numbering" : n,
