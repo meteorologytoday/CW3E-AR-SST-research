@@ -14,7 +14,9 @@ def makeDividedBoxes(lon_bnds, lat_bnds):
 
             
             boxes.append({
-                "numbering" : n,
+                "n" : n,
+                "j" : j,
+                "i" : i,
                 "polygon"   : {
                     "lon_bnds" : (lon_bnds[i]%360, lon_bnds[i+1]%360),
                     "lat_bnds" : (lat_bnds[j], lat_bnds[j+1]),

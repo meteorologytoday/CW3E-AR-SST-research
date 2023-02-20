@@ -3,8 +3,11 @@
 download_dir=./data/ECCO_LLC
 
 
-start_date="1996-09-30T00:00:00Z"
-end_date="2017-04-01T00:00:00Z"
+start_date="1992-09-30T00:00:00Z"
+#end_date="1996-04-02T00:00:00Z"
+
+#start_date="1996-09-30T00:00:00Z"
+end_date="2017-04-02T00:00:00Z"
 
 
 datasets_LLC=(
@@ -23,9 +26,6 @@ datasets_LLC=(
     ECCO_L4_DENS_STRAT_PRESS_LLC0090GRID_DAILY_V4R4
 )
     
-datasets_LLC=(
-    ECCO_L4_TEMP_SALINITY_LLC0090GRID_DAILY_V4R4
-)
 
 for dataset in "${datasets_LLC[@]}"; do
 

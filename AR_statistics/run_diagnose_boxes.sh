@@ -11,7 +11,6 @@ output_root=output_${ocn_dataset}
 
 beg_year=1998
 end_year=2017
-#end_year=1998
 
 # format: lat_m lat_M lon_m lon_M lat_nbox lon_nbox
 spatial_rngs=(
@@ -19,7 +18,7 @@ spatial_rngs=(
     48 52 -147 -143  1  1
 )
 spatial_rngs=(
-    10 60 -160 -120  10 8
+    10 60 120 -120  10 24
 )
 
 nparms=6

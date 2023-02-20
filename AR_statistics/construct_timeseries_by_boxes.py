@@ -34,6 +34,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--beg-year',   type=int, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--end-year',   type=int, help='Date string: yyyy-mm-dd', required=True)
 parser.add_argument('--output-dir', type=str, help='Output directory', default="")
+parser.add_argument('--output-filename', type=str, help='Output filename', default="full_dataset.nc")
 parser.add_argument('--lat-rng',    type=float, nargs=2, help='Latitude  range', required=True)
 parser.add_argument('--lon-rng',    type=float, nargs=2, help='Longitude range. 0-360', required=True)
 parser.add_argument('--lat-nbox',   type=int, help='Latitude  range', required=True)
@@ -50,6 +51,8 @@ print(args)
 
 beg_date = datetime(args.beg_year-1, 10,  1 )
 end_date = datetime(args.end_year,    4,  1 )
+
+
 total_days = (end_date - beg_date).days
 
 t_vec = [ beg_date + timedelta(days=d) for d in range(total_days) ]
@@ -120,16 +123,18 @@ f_co = None
 computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
 computed_ERA5_vars = []
 
+all_varnames = ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars
+
 ts_datasets = [
 
     xr.Dataset(
         { 
             varname : (['time',], np.zeros((total_days,), dtype=np.float64)) 
-            for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars) 
+            for varname in all_varnames 
         },
 
         coords = {
-            'time' : t_vec_npdatetime, 
+            'time' : t_vec_npdatetime,
         },
     ) 
     
@@ -157,15 +162,16 @@ full_dataset = [
 ]
 
 box_number = np.zeros((len(lat_bnds)-1, len(lon_bnds)-1), dtype=np.int32)
-    
-for i in range(box_number.shape[1]):
-    for j in range(box_number.shape[0]):
-        box_number[j, i] = boxes[j + i*box_number.shape[0]]
+
+for b, box in enumerate(boxes):
+    j = box["j"]
+    i = box["i"]
+    box_number[j, i] = box["n"]
 
 full_dataset.append(
     xr.Dataset(
         { 
-            "box_number" : (['time', 'lat', 'lon', ], box_number),
+            "box_number" : (['lat', 'lon'], box_number),
         },
         coords = {
             'lat'  : (lat_bnds[:-1] + lat_bnds[1:]) / 2,
@@ -178,7 +184,7 @@ full_dataset.append(
 
 full_dataset = xr.merge(full_dataset)
 
-full_dataset.to_netcdf("test.nc")
+full_dataset.coords["time"].encoding["units"] = "days since 1990-01-01"
 
 # Eventually, data_good will be merge with each dataset of each box
 data_good = xr.DataArray(
@@ -216,9 +222,6 @@ def magicalExtension(_data):
     res_max = np.amax(np.abs(res[np.isfinite(res)]))
     print("Max of abs(MLG_residue): ", res_max)
     
-
-#mask_ERA5 = ds
-
 
 ditch_this_wateryear = np.nan
 current_wateryear = np.nan
@@ -544,15 +547,32 @@ print("Clear the data of the date if we do not have all the data of that date, o
 
 print("Merge data_good into each dataset")
 data_good_idx = data_good == 1
+none_is_selected_idx = np.isnan(data_good) # This is an all-false boolean array. It is used to assign an entire dataset as NaN for empty boxes
 for i, ts_ds in enumerate(ts_datasets):
-    ts_datasets[i] = ts_ds.where(data_good_idx).merge(data_good)
+
+    if boxes[i]['empty_ERA5'] or boxes[i]['empty_ecco']:
+        ts_datasets[i] = ts_ds.where(none_is_selected_idx).merge(data_good)
+    else: 
+        ts_datasets[i] = ts_ds.where(data_good_idx).merge(data_good)
+
+print("Merge each timeseries into a complete file (experimental).")
+for b, box in enumerate(boxes):
+    
+    i = box["i"]
+    j = box["j"]
+    for varname in all_varnames:
+        full_dataset[varname][:, j, i] = ts_datasets[b][varname]
+
+
+
 
 
 if args.output_dir != "":
             
     print("Output directory: %s" % (args.output_dir,))
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    
+   
+    """ 
     for b in range(len(boxes)):
 
         box = boxes[b]
@@ -562,12 +582,19 @@ if args.output_dir != "":
 
         print("[b=%d] Output filename: %s" % ( b, output_filename, ))
         ts_ds.to_netcdf(output_filename)
+    """
 
-    # Merge boxes into a single netcdf file
+    output_filename_full_dataset = "%s/%s" % (args.output_dir, args.output_filename)
+        
+    print("Output filename: %s" % ( output_filename_full_dataset, ))
+    full_dataset.to_netcdf(
+        output_filename_full_dataset,
+        unlimited_dims=["time",]
+    )
+ 
     
-    
 
-
+    """
     with open("%s/box_info.txt" % (args.output_dir,), "w") as f:
 
         f.write("Latitude  range: [%f, %f) \n" % (args.lat_rng[0],     args.lat_rng[1])) 
@@ -586,10 +613,12 @@ if args.output_dir != "":
             ))
 
 
+    """
 
+    """
     with open("%s/rm_years.txt" % (args.output_dir,), "w") as f:
         for y in rm_years:
             f.write("%d\n" % y)           
-
+    """
 
 

@@ -7,7 +7,6 @@ import ecco_v4_py as ecco
 
 import numpy as np
 import netCDF4
-import vorticity_tools, advection_tools
 from buoyancy_nonlinear import TS2rho, TS2b
 import earth_constants as ec
 import calculus_tools
