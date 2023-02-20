@@ -14,32 +14,60 @@ def doy_leap(t):
 
 
 
-def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray):
-
-    tm       = np.zeros((365,))
-    xm       = np.zeros((len(tm),))
-    cnt      = np.zeros((len(tm),), dtype=int)
+def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
 
     if ts.dtype != object:    
         ts_datetime = ts.astype(object)
     else:
         ts_datetime = ts
 
-    #print(ts_datetime)
+
+    if assist is None:
+
+        tm = np.array([
+            datetime(2021, 1, 1) + _t * timedelta(days=1)  for _t in range(365)
+        ]).astype("datetime64[s]")
+
+
+        doy  = np.zeros(len(ts_datetime), dtype=np.int32)
+        skip = np.zeros(len(ts_datetime), dtype=np.bool)
+        cnt  = np.zeros(len(tm), dtype=np.int32)
+
+        doy[:] = -1
+        for i, t in enumerate(ts_datetime):
+
+            m = t.month
+            d = t.day
+
+
+            
+            if m == 2 and d == 29:
+                skip[i] = True
+            else:
+                doy[i] = doy_noleap(t)
+                cnt[doy-1] += 1
+
+        assist = {
+            'doy'  : doy,
+            'skip' : skip,
+            'cnt'  : cnt,
+            'tm'   : tm,
+        }
+
+    tm = assist['tm']
+    doy  = assist['doy']       
+    cnt  = assist['cnt']       
+    skip = assist['skip']       
+    
+    xm       = np.zeros((len(tm),))
 
     for i, t in enumerate(ts_datetime):
 
-        m = t.month
-        d = t.day
-
-        if m == 2 and d == 29:
+        if skip[i] :
             continue
+        
+        xm[doy[i]-1]  += xs[i]
 
-        doy = doy_noleap(t)
-        xm[doy-1]  += xs[i]
-        cnt[doy-1] += 1
-
-       
     xm /= cnt
         
     xa = np.zeros((len(xs),))
@@ -57,14 +85,10 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray):
                 xa[i] = np.nan
         
         else:
-            doy = doy_noleap(t)
-            xa[i] = xs[i] - xm[doy-1]
-
-
-    
+            xa[i] = xs[i] - xm[doy[i]-1]
 
     tm = np.array([
         datetime(2021, 1, 1) + _t * timedelta(days=1)  for _t in range(len(tm))
     ]).astype("datetime64[s]")
 
-    return tm, xm, xa, cnt
+    return tm, xm, xa, cnt, assist

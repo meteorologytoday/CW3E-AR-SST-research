@@ -1,5 +1,5 @@
 import numpy as np
-import fmon_tools, watertime_tools
+#import fmon_tools, watertime_tools
 import anomalies
 import ARstat_tool
 import xarray as xr
@@ -15,238 +15,17 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument('--input-dir', type=str, help='Input file', required=True)
-parser.add_argument('--beg-year', type=int, help='Input file', required=True)
 parser.add_argument('--output', type=str, help='Output file', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
-parser.add_argument('--breakdown', type=str, help='Output title', default="atmocn", choices=["atmocn", "atm", "ocn"])
 parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
 
-plotted_varnames = {
-    "atmocn" : ["dMLTdt", "MLG_frc", "MLG_nonfrc"],
-    "atm" : ["MLG_frc", "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf"],
-    "ocn" : ["MLG_nonfrc", "MLG_adv", "MLG_vdiff", "MLG_ent", "MLG_hdiff", "MLG_res2"],
-}[args.breakdown]
+t_months = np.array([1, 2, 3, 4, 5, 6])
 
-print(plotted_varnames)
-
-
-ds = xr.open_dataset(args.input).astype(np.float64)
-
-MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc_lh'] + ds['MLG_frc_fwf'] + ds['MLG_rescale']).rename('MLG_frc')
-
-MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
-MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
-MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
-
-MLG_res2 = (ds['dMLTdt'] - (
-      ds['MLG_frc_sw']
-    + ds['MLG_frc_lw']
-    + ds['MLG_frc_sh']
-    + ds['MLG_frc_lh']
-    + ds['MLG_frc_fwf']
-    + ds['MLG_rescale']
-    + ds["MLG_vdiff"]
-    + ds["MLG_hdiff"]
-    + ds["MLG_vadv"]
-    + ds["MLG_hadv"]
-    + ds["MLG_ent"]
-)).rename('MLG_res2')
-
-print(MLG_res2)
-
-print("RESIDUE: ", np.amax(np.abs(ds['MLG_residue'])))
-
-ds = xr.merge(
-    [
-        ds,
-        MLG_frc,
-        MLG_nonfrc,
-        MLG_adv,
-        MLG_diff,
-        MLG_res2,
-    ]
-)
-
-# Compute mean and anomaly
-def convertdt64todt(dt64):
-    return datetime.fromtimestamp( (dt64 - np.datetime64("1970-01-01")) / np.timedelta64(1, 's' ))
- 
-ts_np64 = ds.time.to_numpy().astype("datetime64[s]")
-ts_dt   = ts_np64.astype(object)
-
-ds_mean = []
-ds_anom = []
-for _, varname in enumerate(ds.keys()):
-    
-    _var = ds[varname]
-    xs = _var.to_numpy()
-    
-    tm, xm, xa, cnt = anomalies.decomposeClimAnom(ts_dt, xs)
-
-    ds_mean.append(
-        xr.DataArray(
-            name = varname,
-            data = xm,
-            dims = ["time"],
-            coords = {
-                "time" : np.array(tm).astype("datetime64[ns]"),
-            }
-        )
-    )
-
-    ds_anom.append(
-        xr.DataArray(
-            name = varname,
-            data = xa,
-            dims = ["time"],
-            coords = {
-                "time" : ts_np64,
-            }
-        )
-    )
-
-
-ds_anom = xr.merge(ds_anom)
-ds_mean = xr.merge(ds_mean)
-
-# Construct
-t_months = np.arange(1, 7)
-
-ds_stats = {}
-
-for condition_name, (IVT_min, IVT_max) in [
-    ("clim",  (0, np.inf)),
-    ("ARf",   (0, 250)),
-    ("AR",    (250, np.inf)),
-    ("AR+ARf",    (None, None)),
-]:
-
-    _tmp = {}
-    for varname, _ in ds.items():
-        _tmp[varname] = (["time", "stat"], np.zeros((len(t_months), 5)) )
-
-    ds_stat = xr.Dataset(
-        _tmp,
-
-        coords = {
-            "time" : t_months,
-            "stat" : ["mean", "q25", "q75", "q10", "q90"]
-        }
-    )
-
-    ds_stats[condition_name] = ds_stat
-
-    for t, m in enumerate(t_months): 
-        
-        #print("m = ", m, "; wm = ", watertime_tools.wm2m(m))
-        
-        if condition_name == "clim":
-            _ds_ref = ds
-            _cond = _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
- 
-        elif condition_name == "AR+ARf":
-            _ds_ref = ds_anom
-            _cond = _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
-        
-        elif condition_name in ["AR", "ARf"]:
-            _ds_ref = ds_anom
-            _cond = (
-                  ( ds.IVT >= IVT_min ) 
-                & ( ds.IVT <  IVT_max ) 
-                & _ds_ref.time.dt.month.isin(watertime_tools.wm2m(m))
-            )
-   
-        else:
-            raise Exception("Unknown condition_name: ", condition_name) 
-
-        print("Conditon %s : cnt = %d, wm = %d" % (condition_name, np.sum(_cond), m))
-
-        _ds = _ds_ref.where(_cond)
-        #_ds = _ds_ref
-            
-        for varname, _ in ds_stat.items():
-
-            _data = _ds[varname] * 1e6
-            ds_stat[varname][t, 0] = np.nanmean(_data)
-            ds_stat[varname][t, 1] = np.nanquantile(_data, .25)
-            ds_stat[varname][t, 2] = np.nanquantile(_data, .75)
-            ds_stat[varname][t, 3] = np.nanquantile(_data, .10)
-            ds_stat[varname][t, 4] = np.nanquantile(_data, .90)
-            
-
-    print(IVT_min, " - ", IVT_max)
-
-ds_stats["AR-ARf"] = ds_stats["AR"] - ds_stats["ARf"]
-
-
-
-plot_infos = {
-
-    "dMLTdt" : {
-        "label" : "$\\dot{T}_\\mathrm{ttl}$",
-    },
-
-
-    "MLG_ttl" : {
-        "label" : "$\\dot{T}_\\mathrm{ttl}$",
-    },
-
-    "MLG_frc" : {
-        "label" : "$\\dot{T}_\\mathrm{frc}$",
-    },
-
-    "MLG_nonfrc" : {
-        "label" : "$\\dot{T}_\\mathrm{nfrc}$",
-    },
-
-
-    "MLG_frc_lw" : {
-        "label" : "$\\dot{T}_\\mathrm{lw}$",
-    },
-
-    "MLG_frc_sw" : {
-        "label" : "$\\dot{T}_\\mathrm{sw}$",
-    },
-
-    "MLG_frc_lh" : {
-        "label" : "$\\dot{T}_\\mathrm{lh}$",
-    },
-
-    "MLG_frc_sh" : {
-        "label" : "$\\dot{T}_\\mathrm{sh}$",
-    },
-
-    "MLG_frc_fwf" : {
-        "label" : "$\\dot{T}_\\mathrm{fwf}$",
-    },
-
-
-    "MLG_adv" : {
-        "label" : "$\\dot{T}_\\mathrm{adv}$",
-    },
-
-    "MLG_vdiff" : {
-        "label" : "$\\dot{T}_\\mathrm{vdiff}$",
-    },
-
-    "MLG_ent" : {
-        "label" : "$\\dot{T}_\\mathrm{ent}$",
-    },
-
-    "MLG_hdiff" : {
-        "label" : "$\\dot{T}_\\mathrm{hdiff}$",
-    },
-
-
-    "MLG_res2" : {
-        "label" : "$\\dot{T}_\\mathrm{res}$",
-    },
-
-
-
-}
+ds_stat = {}
+for k in ["clim", "AR", "ARf", "AR-ARf"]:
+    ds_stat[k] = xr.open_dataset("%s/stat_%s.nc" % (args.input_dir, k))
 
 plot_infos_scnario = {
 
@@ -267,6 +46,21 @@ plot_infos_scnario = {
     }
 
 }
+
+plot_infos = {
+    "dMLTdt" : {
+        "levels": np.linspace(-1, 1, 21)
+    },
+
+    "MLG_frc" : {
+        "levels": np.linspace(-1, 1, 21)
+    }, 
+    "MLG_nonfrc" : {
+        "levels": np.linspace(-1, 1, 21)
+    }, 
+
+}
+
 
 plot_ylim = {
 
@@ -305,80 +99,57 @@ from matplotlib import cm
 from matplotlib.patches import Rectangle
 import matplotlib.transforms as transforms
 from matplotlib.dates import DateFormatter
-from scipy.stats import linregress
+import matplotlib.ticker as mticker
+import cartopy.crs as ccrs
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+
 
 print("done")
 
-fig, ax = plt.subplots(2, 1, figsize=(6, 8), squeeze=False, constrained_layout=True)# gridspec_kw = dict(hspace=0.3, wspace=0.4))
+cent_lon = 180.0
 
-if args.title == "":
-    fig.suptitle(args.input)
-else:
-    fig.suptitle(args.title)
+plot_lon_l = 110.0
+plot_lon_r = 250.0
+plot_lat_b = 5.0
+plot_lat_t = 65.0
 
-bar_width = 0.8 / len(plotted_varnames) #0.15
+proj = ccrs.PlateCarree(central_longitude=cent_lon)
+proj_norm = ccrs.PlateCarree()
 
+fig, ax = plt.subplots(3, len(t_months), figsize=(4*len(t_months), 2*3), subplot_kw=dict(projection=proj))
 
-for s, sname in enumerate(["clim", "AR-ARf"]):
+coords = ds_stat["clim"].coords
+cmap = "bwr"
+for m, mon in enumerate(t_months):
 
-    ds_stat = ds_stats[sname]
-    
-    _ax = ax[s, 0]
-
-    for i, varname in enumerate(plotted_varnames):
-
-        _data = ds_stat[varname].to_numpy()
-        _ax.bar(t_months + i*bar_width, _data[:, 0],   bar_width, label=plot_infos[varname]['label'])
-
-
-        _anom_ARpARf_data = ds_stats["AR+ARf"][varname].to_numpy()
-        _anom_AR_data = ds_stats["AR"][varname].to_numpy()
-        _anom_ARf_data = ds_stats["ARf"][varname].to_numpy()
-        _mean_data = ds_stats["clim"][varname].to_numpy()
-
-        # error bar
-        _error_bar_lower = _anom_ARpARf_data[:, 1]
-        _error_bar_upper = _anom_ARpARf_data[:, 2]
-        _offset = _data[:, 0]
-
-        for m, t_month in enumerate(t_months): 
-            _ax.plot(
-                [t_month + i*bar_width]*2,
-                np.array([_error_bar_lower[m], _error_bar_upper]) + _offset[m],
-                "k-",
-            )
-
-    _ax.set_xticks(t_months)
-    _ax.set_xticklabels(np.vectorize(watertime_tools.wm2m)(t_months))
-
-    _ax.set_xlabel("Month")
-    _ax.set_ylabel("[ $ 1 \\times 10^{-6} \\mathrm{K} \\, / \\, \\mathrm{s} $ ]")
-
-    _ax.set_title("(%s) %s " % (
-        "abcdefghijklmn"[s],
-        plot_infos_scnario[sname]['title'],
-    ))
-
-    
-    _ax.set_xlim([0.5, 8.5])
-
-    _ax.legend(loc="center right", borderpad=0.1, labelspacing=0.1)
-    
-    if s in [0, ]:
-        _ax.set_ylim(plot_ylim[args.breakdown]['mean'])
-    else:
-        _ax.set_ylim(plot_ylim[args.breakdown]['anom'])
-
-    _ax.grid(True)
-
-if args.output != "":
+    _ax = ax[:, m]
+  
+    s = "AR-ARf" 
+    mappable = _ax[0].contourf(coords["lon"], coords["lat"], ds_stat[s]["dMLTdt"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
+    mappable = _ax[1].contourf(coords["lon"], coords["lat"], ds_stat[s]["MLG_frc"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
+    mappable = _ax[2].contourf(coords["lon"], coords["lat"], ds_stat[s]["MLG_nonfrc"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
    
-    print("Output filename: %s" % (args.output,))
-    fig.savefig(args.output, dpi=200)
+    for __ax in _ax: 
+        __ax.set_global()
+        __ax.gridlines()
+        __ax.coastlines()
 
+        gl = __ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
+                          linewidth=1, color='gray', alpha=0.5, linestyle='--')
+        gl.xlabels_top = False
+        gl.ylabels_left = False
+        #gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, 60))
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
+        gl.xlabel_style = {'size': 10, 'color': 'black'}
+        gl.ylabel_style = {'size': 10, 'color': 'black'}
+
+        __ax.set_extent([plot_lon_l, plot_lon_r, plot_lat_b, plot_lat_t], crs=proj_norm)
 
 if not args.no_display:
-    print("Show figure")
     plt.show()
 
+if args.output != "":
+    
+    fig.savefig(args.output, dpi=200)
 
