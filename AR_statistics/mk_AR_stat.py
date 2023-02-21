@@ -127,7 +127,7 @@ for condition_name, (IVT_min, IVT_max) in [
 
     _tmp = {}
     for varname, _ in ds_anom.items():
-        _tmp[varname] = (["time", "lat", "lon", "stat"], np.zeros((len(t_months), len(ds.coords["lat"]), len(ds.coords["lon"]), 2)) )
+        _tmp[varname] = (["time", "lat", "lon", "stat"], np.zeros((len(t_months), len(ds.coords["lat"]), len(ds.coords["lon"]), 4)) )
 
     ds_stat = xr.Dataset(
         _tmp,
@@ -136,7 +136,7 @@ for condition_name, (IVT_min, IVT_max) in [
             "time" : t_months,
             "lat"  : ds.coords["lat"],
             "lon"  : ds.coords["lon"],
-            "stat" : ["mean", "std"]
+            "stat" : ["mean", "std", "var", "cnt"],
         }
     )
 
@@ -172,7 +172,9 @@ for condition_name, (IVT_min, IVT_max) in [
 
             _data = _ds[varname].to_numpy()
             ds_stat[varname][m, :, :, 0] = np.nanmean(_data, axis=0) #_data.mean( dim="time", skipna=True)
-            ds_stat[varname][m, :, :, 1] = np.nanstd(_data,axis=0)#_data.std(  dim="time", skipna=True)
+            ds_stat[varname][m, :, :, 1] = np.nanstd(_data,  axis=0)#_data.std(  dim="time", skipna=True)
+            ds_stat[varname][m, :, :, 2] = np.nanvar(_data,  axis=0)#_data.std(  dim="time", skipna=True)
+            ds_stat[varname][m, :, :, 3] = np.nansum(np.isfinite(_data),  axis=0)#_data.std(  dim="time", skipna=True)
             
 
 ds_stats["AR-ARf"] = ds_stats["AR"] - ds_stats["ARf"]

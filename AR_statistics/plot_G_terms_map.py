@@ -24,7 +24,7 @@ print(args)
 t_months = np.array([1, 2, 3, 4, 5, 6])
 
 ds_stat = {}
-for k in ["clim", "AR", "ARf", "AR-ARf"]:
+for k in ["clim", "AR", "ARf", "AR-ARf", "AR+ARf"]:
     ds_stat[k] = xr.open_dataset("%s/stat_%s.nc" % (args.input_dir, k))
 
 plot_infos_scnario = {
@@ -82,6 +82,9 @@ plot_ylim = {
 
 }
 
+
+
+
 # Plot data
 print("Loading Matplotlib...")
 import matplotlib as mpl
@@ -116,6 +119,7 @@ plot_lat_t = 65.0
 proj = ccrs.PlateCarree(central_longitude=cent_lon)
 proj_norm = ccrs.PlateCarree()
 
+varnames = ["dMLTdt", "MLG_frc", "MLG_nonfrc"]
 fig, ax = plt.subplots(3, len(t_months), figsize=(4*len(t_months), 2*3), subplot_kw=dict(projection=proj))
 
 coords = ds_stat["clim"].coords
@@ -124,11 +128,29 @@ for m, mon in enumerate(t_months):
 
     _ax = ax[:, m]
   
-    s = "AR-ARf" 
-    mappable = _ax[0].contourf(coords["lon"], coords["lat"], ds_stat[s]["dMLTdt"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
-    mappable = _ax[1].contourf(coords["lon"], coords["lat"], ds_stat[s]["MLG_frc"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
-    mappable = _ax[2].contourf(coords["lon"], coords["lat"], ds_stat[s]["MLG_nonfrc"][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
-   
+    s = "AR-ARf"
+
+    for i, varname in enumerate(varnames):
+        mappable = _ax[i].contourf(coords["lon"], coords["lat"], ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
+
+        _diff = np.abs(ds_stat["AR-ARf"][varname][m, :, :, 0].to_numpy())
+        _std1 = ds_stat["AR"][varname][m, :, :, 1].to_numpy()
+        _std2 = ds_stat["ARf"][varname][m, :, :, 1].to_numpy()
+        
+        _std3 = ds_stat["AR+ARf"][varname][m, :, :, 1].to_numpy()
+
+        _dot = _diff * 0 
+        _significant_idx =  (_diff > _std1) | (_diff > _std2)
+        #_significant_idx =  (_diff > _std3)
+
+        print("_diff: ", _diff[0, 0:20])
+        print("_std3: ", _std1[0, 0:20])
+
+        _dot[ _significant_idx                 ] = 0.75
+        _dot[ np.logical_not(_significant_idx) ] = 0.25
+
+        _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, "..."], transform=proj_norm)
+       
     for __ax in _ax: 
         __ax.set_global()
         __ax.gridlines()
