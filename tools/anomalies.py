@@ -30,7 +30,7 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
 
 
         doy  = np.zeros(len(ts_datetime), dtype=np.int32)
-        skip = np.zeros(len(ts_datetime), dtype=np.bool)
+        skip = np.zeros(len(ts_datetime), dtype=np.bool_)
         cnt  = np.zeros(len(tm), dtype=np.int32)
 
         doy[:] = -1
