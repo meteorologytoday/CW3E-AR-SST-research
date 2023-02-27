@@ -111,16 +111,17 @@ ds_anom = xr.merge(ds_anom)
 ds_mean = xr.merge(ds_mean)
 
 
+
 # Construct
 t_months = np.arange(1, 7)
 
 ds_stats = {}
 
 for condition_name, (IVT_min, IVT_max) in [
-    ("clim",  (0, np.inf)),
-    ("ARf",   (0, 250)),
-    ("AR",    (250, np.inf)),
-    ("AR+ARf", (0, np.inf)),
+    ("clim",  (0, np.inf)   ),
+    ("ARf",   (0, 250)      ),
+    ("AR",    (250, np.inf )),
+    ("AR+ARf", (0, np.inf  )),
 ]:
 
     print("Process condition: ", condition_name)
@@ -142,7 +143,9 @@ for condition_name, (IVT_min, IVT_max) in [
 
     ds_stats[condition_name] = ds_stat
     IVT_cond = (ds.IVT >= IVT_min) & (ds.IVT <  IVT_max)
-    
+   
+    IVT_cond_ndays = ifNdaysInARow(IVT_cond)
+ 
     #print("SHAPE OF IVT_COND: ", IVT_cond.shape)
  
     for m, wm in enumerate(t_months): 
@@ -165,6 +168,9 @@ for condition_name, (IVT_min, IVT_max) in [
         else:
             raise Exception("Unknown condition_name: ", condition_name) 
 
+        
+        # Construct n-days in a row selection
+        #ds.time.dt.month.isin(watertime_tools.wm2m(wm))
 
         _ds = _ds_ref.where(total_cond)
             

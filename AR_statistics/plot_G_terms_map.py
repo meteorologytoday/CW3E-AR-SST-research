@@ -49,14 +49,17 @@ plot_infos_scnario = {
 
 plot_infos = {
     "dMLTdt" : {
-        "levels": np.linspace(-1, 1, 21)
+        "levels": np.linspace(-1, 1, 11) * 0.5,
+        "label" : "$ G_{\mathrm{ttl}} $",
     },
 
     "MLG_frc" : {
-        "levels": np.linspace(-1, 1, 21)
+        "levels": np.linspace(-1, 1, 11) * 0.5,
+        "label" : "$ G_{\mathrm{frc}} $",
     }, 
     "MLG_nonfrc" : {
-        "levels": np.linspace(-1, 1, 21)
+        "levels": np.linspace(-1, 1, 11) * 0.5,
+        "label" : "$ G_{\mathrm{nfrc}} $",
     }, 
 
 }
@@ -109,64 +112,145 @@ from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 print("done")
 
+from scipy.stats import ttest_ind_from_stats
+
+def student_t_test(mean1, std1, nobs1, mean2, std2, nobs2):
+
+    shp = mean1.shape
+    
+    pvals = np.zeros(shp, dtype=np.float64)
+    pvals[:] = np.nan
+    
+    tstats = pvals.copy()
+
+    for j in range(shp[0]):
+        for i in range(shp[1]):
+            
+            m1 = mean1[j, i]
+            m2 = mean2[j, i]
+            
+            s1 = std1[j, i]
+            s2 = std2[j, i]
+
+            n1 = nobs1[j, i]
+            n2 = nobs2[j, i]
+
+            if np.all(np.isfinite([m1, m2, s1, s2, n1, n2])) and n1 >= 30 and n2 >= 30:
+                
+                result = ttest_ind_from_stats(
+                    m1, s1, n1,
+                    m2, s2, n2,
+                    equal_var=False,
+                    alternative='two-sided',
+                )
+
+                tstats[j, i] = result[0]
+                pvals[j, i] = result[1]
+
+
+
+    return tstats, pvals
+
 cent_lon = 180.0
 
-plot_lon_l = 110.0
-plot_lon_r = 250.0
-plot_lat_b = 5.0
-plot_lat_t = 65.0
+plot_lon_l = 120.0
+plot_lon_r = 240.0
+plot_lat_b = 10.0
+plot_lat_t = 60.0
 
 proj = ccrs.PlateCarree(central_longitude=cent_lon)
 proj_norm = ccrs.PlateCarree()
 
 varnames = ["dMLTdt", "MLG_frc", "MLG_nonfrc"]
-fig, ax = plt.subplots(3, len(t_months), figsize=(4*len(t_months), 2*3), subplot_kw=dict(projection=proj))
+fig, ax = plt.subplots(
+    len(varnames), len(t_months),
+    figsize=(2.5 * 2 * len(t_months), 2 * len(varnames)),
+    subplot_kw=dict(projection=proj),
+    gridspec_kw=dict(hspace=0, wspace=0.2),
+    constrained_layout=False,
+)
 
 coords = ds_stat["clim"].coords
-cmap = "bwr"
+cmap = cm.get_cmap("bwr")
+
+cmap.set_over("green")
+cmap.set_under("yellow")
+
+mappables = [ None for i in range(len(varnames)) ]
 for m, mon in enumerate(t_months):
 
     _ax = ax[:, m]
   
     s = "AR-ARf"
+        
+
+    _ax[0].set_title([
+        "Oct",
+        "Nov",
+        "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+    ][m])
 
     for i, varname in enumerate(varnames):
-        mappable = _ax[i].contourf(coords["lon"], coords["lat"], ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
 
-        _diff = np.abs(ds_stat["AR-ARf"][varname][m, :, :, 0].to_numpy())
+        _mean1 = ds_stat["AR"][varname][m, :, :, 0].to_numpy()
+        _mean2 = ds_stat["ARf"][varname][m, :, :, 0].to_numpy()
+ 
         _std1 = ds_stat["AR"][varname][m, :, :, 1].to_numpy()
         _std2 = ds_stat["ARf"][varname][m, :, :, 1].to_numpy()
+ 
+        _nobs1 = ds_stat["AR"][varname][m, :, :, 3].to_numpy()
+        _nobs2 = ds_stat["ARf"][varname][m, :, :, 3].to_numpy()
+
+        _, pvals = student_t_test(_mean1, _std1, _nobs1, _mean2, _std2, _nobs2)        
         
-        _std3 = ds_stat["AR+ARf"][varname][m, :, :, 1].to_numpy()
+        _diff = (ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6).to_numpy()
 
         _dot = _diff * 0 
-        _significant_idx =  (_diff > _std1) | (_diff > _std2)
-        #_significant_idx =  (_diff > _std3)
-
-        print("_diff: ", _diff[0, 0:20])
-        print("_std3: ", _std1[0, 0:20])
+        _significant_idx =  (pvals <= 0.05) 
 
         _dot[ _significant_idx                 ] = 0.75
         _dot[ np.logical_not(_significant_idx) ] = 0.25
 
-        _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, "..."], transform=proj_norm)
+        # Remove insignificant data
+        #_diff[np.logical_not(_significant_idx)] = np.nan
+
+        mappables[i] = _ax[i].contourf(coords["lon"], coords["lat"], _diff, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
+        _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
        
     for __ax in _ax: 
+
         __ax.set_global()
-        __ax.gridlines()
+        #__ax.gridlines()
         __ax.coastlines()
+        __ax.set_extent([plot_lon_l, plot_lon_r, plot_lat_b, plot_lat_t], crs=proj_norm)
 
         gl = __ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
                           linewidth=1, color='gray', alpha=0.5, linestyle='--')
-        gl.xlabels_top = False
-        gl.ylabels_left = False
-        #gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, 60))
+
+        gl.xlabels_top   = False
+        gl.ylabels_right = False
+
+        #gl.xlocator = mticker.FixedLocator(np.arange(-180, 181, 30))
+        gl.xlocator = mticker.FixedLocator([120, 150, 180, -150, -120])#np.arange(-180, 181, 30))
+        gl.ylocator = mticker.FixedLocator([10, 20, 30, 40, 50])
+        
         gl.xformatter = LONGITUDE_FORMATTER
         gl.yformatter = LATITUDE_FORMATTER
         gl.xlabel_style = {'size': 10, 'color': 'black'}
         gl.ylabel_style = {'size': 10, 'color': 'black'}
 
-        __ax.set_extent([plot_lon_l, plot_lon_r, plot_lat_b, plot_lat_t], crs=proj_norm)
+
+
+
+
+for i in range(len(mappables)):
+    
+    cb = plt.colorbar(mappables[i], ax=ax[i, :], orientation="vertical", pad=0.01, shrink=0.8)
+    cb.ax.set_ylabel(" %s [ $ 1 \\times 10^{-6} \\, \\mathrm{K} \\, / \\, \\mathrm{s} $ ]" % (plot_infos[varnames[i]]["label"],))
+
 
 if not args.no_display:
     plt.show()
