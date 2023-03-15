@@ -82,7 +82,9 @@ for _, varname in enumerate(target_varnames):
             "time" : tm_np64,
         }
     )
-    
+   
+
+ 
     _da_anom = xr.DataArray(
         name = varname,
         data = np.zeros((len(ts_np64), len(ds.coords["lat"]), len(ds.coords["lon"]))),
@@ -111,6 +113,8 @@ ds_anom = xr.merge(ds_anom)
 ds_mean = xr.merge(ds_mean)
 
 
+ds_anom.to_netcdf("ds_anom.nc")
+ds_mean.to_netcdf("ds_mean.nc")
 
 # Construct
 t_months = np.arange(1, 7)
@@ -142,9 +146,9 @@ for condition_name, (IVT_min, IVT_max) in [
     )
 
     ds_stats[condition_name] = ds_stat
-    IVT_cond = (ds.IVT >= IVT_min) & (ds.IVT <  IVT_max)
+    IVT_cond = (ds.IVT >= IVT_min) & (ds.IVT <  IVT_max) & (ds.IWV >= 20.0)
    
-    IVT_cond_ndays = ifNdaysInARow(IVT_cond)
+    #IVT_cond_ndays = ifNdaysInARow(IVT_cond)
  
     #print("SHAPE OF IVT_COND: ", IVT_cond.shape)
  
@@ -153,9 +157,17 @@ for condition_name, (IVT_min, IVT_max) in [
         time_cond = ds.time.dt.month.isin(watertime_tools.wm2m(wm))
         time_clim_cond = ds_mean.time.dt.month.isin(watertime_tools.wm2m(wm))
 
+        
         if condition_name == "clim":
+            #_ds_ref = ds_mean
+            #total_cond = time_clim_cond
+            
             _ds_ref = ds
-            total_cond = time_clim_cond
+            total_cond = time_cond
+            
+            #print( "sum time_clim_cond: ",  np.nansum( time_clim_cond.astype(int).to_numpy() ) )
+            #print( "sum time_cond:      ",  np.nansum( time_cond.astype(int).to_numpy() ) )
+
 
         elif condition_name == "AR+ARf":
             _ds_ref = ds_anom
@@ -173,13 +185,19 @@ for condition_name, (IVT_min, IVT_max) in [
         #ds.time.dt.month.isin(watertime_tools.wm2m(wm))
 
         _ds = _ds_ref.where(total_cond)
-            
+
+
+        #if condition_name == "clim":
+        #    print("MEAN = ")
+        #    print( np.nanmean( _ds["dMLTdt"].to_numpy(), axis=0) ) 
+        #    print("Valid points: ", np.sum(np.isfinite(np.nanmean( _ds["dMLTdt"].to_numpy(), axis=0) ))) 
+
         for varname, _ in ds_stat.items():
 
             _data = _ds[varname].to_numpy()
             ds_stat[varname][m, :, :, 0] = np.nanmean(_data, axis=0) #_data.mean( dim="time", skipna=True)
-            ds_stat[varname][m, :, :, 1] = np.nanstd(_data,  axis=0)#_data.std(  dim="time", skipna=True)
-            ds_stat[varname][m, :, :, 2] = np.nanvar(_data,  axis=0)#_data.std(  dim="time", skipna=True)
+            ds_stat[varname][m, :, :, 1] = np.nanstd(_data,  axis=0) #_data.std(  dim="time", skipna=True)
+            ds_stat[varname][m, :, :, 2] = np.nanvar(_data,  axis=0) #_data.std(  dim="time", skipna=True)
             ds_stat[varname][m, :, :, 3] = np.nansum(np.isfinite(_data),  axis=0)#_data.std(  dim="time", skipna=True)
             
 

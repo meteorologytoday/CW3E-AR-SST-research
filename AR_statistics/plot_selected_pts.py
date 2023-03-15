@@ -1,38 +1,17 @@
 import argparse
 import numpy as np
-import map_divide_tools
 
 parser = argparse.ArgumentParser(
-                    prog = 'plot_rectangular',
-                    description = 'Plot a box on world map',
+                    prog = 'plot_skill',
+                    description = 'Plot prediction skill of GFS on AR.',
 )
 
-parser.add_argument('--lat-rng',    type=float, nargs=2, help='Latitude  range', required=True)
-parser.add_argument('--lon-rng',    type=float, nargs=2, help='Longitude range. 0-360', required=True)
-parser.add_argument('--lat-nbox',   type=int, help='Latitude  range', required=True)
-parser.add_argument('--lon-nbox',   type=int, help='Longitude range. 0-360', required=True)
-parser.add_argument('--output', type=str, help='Output file.', default="")
+parser.add_argument('--output', type=str, help='Output file', default="")
 parser.add_argument('--no-display', action="store_true")
-parser.add_argument('--plot-lat-rng',    type=float, nargs=2, help='Latitude  range', required=True)
-parser.add_argument('--plot-lon-rng',    type=float, nargs=2, help='Longitude range. 0-360', required=True)
-
 args = parser.parse_args()
-
 print(args)
 
-lat_rng = np.array(args.lat_rng)
-lon_rng = np.array(args.lon_rng) % 360
 
-print("Adjusted lon_rng:", lon_rng)
-
-lon_bnds = [ lon_rng[0] + (lon_rng[1] - lon_rng[0]) / args.lon_nbox * i for i in range(args.lon_nbox+1)]
-lat_bnds = [ lat_rng[0] + (lat_rng[1] - lat_rng[0]) / args.lat_nbox * i for i in range(args.lat_nbox+1)]
-
-boxes = map_divide_tools.makeDividedBoxes(lon_bnds, lat_bnds)
-
-print("### List of divided boxes: ")
-for box in boxes:
-    print(box)
 
 import matplotlib
 if args.no_display is False:
@@ -52,11 +31,16 @@ from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 print("done")
 
 
-lat_t = args.lat_rng[0]
-lat_b = args.lat_rng[1]
+lat_rng = [5, 65]
+lon_rng = [115, 245]
 
-lon_l = args.lon_rng[0]
-lon_r = args.lon_rng[1]
+
+
+lat_t = lat_rng[0]
+lat_b = lat_rng[1]
+
+lon_l = lon_rng[0]
+lon_r = lon_rng[1]
 
 dlon = lon_r - lon_l
 dlat = lat_t - lat_b
@@ -66,11 +50,10 @@ cent_lon = 180.0
 proj = ccrs.PlateCarree(central_longitude=cent_lon)
 proj_norm = ccrs.PlateCarree()
 
-
-    
 fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection=proj))
 ax.set_global()
 
+"""
 for b, box in enumerate(boxes):
     
     p = box['polygon']
@@ -94,7 +77,7 @@ for b, box in enumerate(boxes):
 
     ax.text(mid_lon, mid_lat, "%d" % b, transform=proj_norm, size=12, ha="center", va="center")
     
-
+"""
 
 ax.gridlines()
 ax.coastlines()

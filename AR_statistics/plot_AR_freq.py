@@ -23,6 +23,7 @@ parser.add_argument('--ndays', type=int, help="ndays parameter", default=1)
 parser.add_argument('--threshold-days', type=int, help="ndays parameter", default=1)
 parser.add_argument('--freq-max', type=float, help="ndays parameter", default=0.2)
 parser.add_argument('--no-display', action="store_true")
+parser.add_argument('--markers', action="store_true")
 args = parser.parse_args()
 print(args)
 
@@ -33,7 +34,7 @@ ds = ARstat_tool.loadDatasets(args.input_dir, yrs)
 # If ndays > 1, then the statistics members will reduce by (ndays-1)
 total_cnt = len(ds.time) - (args.ndays - 1)
 
-ARcond = ds.IVT >= 250
+ARcond = (ds.IVT >= 250) & (ds.IWV >= 20)
 #ARcond = ARstat_tool.ifNdaysInARow(ARcond, args.ndays)
 ARcond = ARstat_tool.countInNdays(ARcond, args.ndays) >= args.threshold_days
 
@@ -97,6 +98,14 @@ ARfreq[ARfreq < 0.001] = np.nan
 #CS = ax.contour(coords["lon"], coords["lat"], ARfreq, levels=levels, colors="k", transform=proj_norm)
 #ax.clabel(CS, fmt="%.2f")
 mappable = ax.contourf(coords["lon"], coords["lat"], ARfreq, levels=levels, cmap=cmap, extend="max", transform=proj_norm)
+
+if args.markers:
+    print("Make markers")    
+    ax.scatter(360-177.0, 33.0, c="white", s=10, marker="o", transform=proj_norm)
+    ax.scatter(360-177.0, 45.0, c="k", s=10, marker="o", transform=proj_norm)
+    ax.scatter(360-140.0, 33.0, c="k", s=10, marker="o", transform=proj_norm)
+    ax.scatter(360-145.0, 50.0, c="k", s=10, marker="o", transform=proj_norm)
+
 
 
 

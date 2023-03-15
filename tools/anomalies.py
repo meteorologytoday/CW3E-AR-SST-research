@@ -85,6 +85,7 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
                 xa[i] = np.nan
         
         else:
+            
             xa[i] = xs[i] - xm[doy[i]-1]
 
     tm = np.array([

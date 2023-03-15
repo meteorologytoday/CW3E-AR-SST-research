@@ -27,6 +27,13 @@ ds_stat = {}
 for k in ["clim", "AR", "ARf", "AR-ARf", "AR+ARf"]:
     ds_stat[k] = xr.open_dataset("%s/stat_%s.nc" % (args.input_dir, k))
 
+
+# generate AR freq
+#print(np.array([31, 30, 31, 31, 28, 31])[:, None, None]) 
+#print(ds_stat["AR"]["IVT"][:, :, :, 3].to_numpy().shape)
+ARfreq = ds_stat["AR"]["IVT"][:, :, :, 3].to_numpy() / ( np.array([31, 30, 31, 31, 28, 31])[:, None, None] ) / 25
+
+
 plot_infos_scnario = {
 
     "clim" : {
@@ -206,7 +213,8 @@ for m, mon in enumerate(t_months):
 
         _, pvals = student_t_test(_mean1, _std1, _nobs1, _mean2, _std2, _nobs2)        
         
-        _diff = (ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6).to_numpy()
+        #_diff = (ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6).to_numpy()
+        _diff = ((ds_stat["AR"][varname][m, :, :, 0] - ds_stat["clim"][varname][m, :, :, 0]) * 1e6).to_numpy()
 
         _dot = _diff * 0 
         _significant_idx =  (pvals <= 0.05) 
@@ -218,13 +226,26 @@ for m, mon in enumerate(t_months):
         #_diff[np.logical_not(_significant_idx)] = np.nan
 
         mappables[i] = _ax[i].contourf(coords["lon"], coords["lat"], _diff, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
-        _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
+
+        cs = _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
+        
+
+        for _, collection in enumerate(cs.collections):
+            collection.set_edgecolor((.2, .2, .2))
+            collection.set_linewidth(0.)
+
+        _ARfreq = ARfreq[m, :, :]
+        #_ARfreq[_ARfreq >= 0.3] = 0.75
+        #_ARfreq[_ARfreq <  0.3] = 0.25
+        #_ax[i].contourf(coords["lon"], coords["lat"], ARfreq[m, :, :], colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
+        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.4, ], colors="k", linestyles='--',  linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
+        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.5, ], colors="k", linestyles='-',linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
        
     for __ax in _ax: 
 
         __ax.set_global()
         #__ax.gridlines()
-        __ax.coastlines()
+        __ax.coastlines(color='gray')
         __ax.set_extent([plot_lon_l, plot_lon_r, plot_lat_b, plot_lat_t], crs=proj_norm)
 
         gl = __ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
