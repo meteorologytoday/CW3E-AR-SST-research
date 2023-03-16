@@ -1,4 +1,6 @@
+from multiprocessing import Pool
 import numpy as np
+import os.path as path
 #import fmon_tools, watertime_tools
 import anomalies
 import ARstat_tool
@@ -17,6 +19,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--input-dir', type=str, help='Input file', required=True)
 parser.add_argument('--beg-year', type=int, help='Input file', required=True)
 parser.add_argument('--end-year', type=int, help='Input file', required=True)
+parser.add_argument('--ncpu', type=int, help='Number of CPUs.', default=4)
+parser.add_argument('--overwrite', help='If we overwrite the output', action="store_true")
 
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
@@ -25,9 +29,15 @@ args = parser.parse_args()
 print(args)
 
 if args.output_dir == "":
-    args.output_dir = args.input_dir
+    args.output_dir = "%s/climanom_%04d-%04d" % (args.input_dir, args.beg_year, args.end_year, )
 
 print("Planned output dir: %s" % (args.output_dir,))
+
+print("Create dir: %s" % (args.output_dir,))
+Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+filename_clim = "%s/clim.nc" % (args.output_dir,)
+filename_anom = "%s/anom.nc" % (args.output_dir,)
 
 yrs = list(range(args.beg_year, args.end_year+1))
 
@@ -49,6 +59,7 @@ ds = xr.merge(
 )
 
 # Compute mean and anomaly
+
 def convertdt64todt(dt64):
     return datetime.fromtimestamp( (dt64 - np.datetime64("1970-01-01")) / np.timedelta64(1, 's' ))
  
@@ -56,24 +67,23 @@ ts_np64 = ds.time.to_numpy().astype("datetime64[ns]")
 ts_dt   = ts_np64.astype("datetime64[s]").astype(object) # need to be datetime64[s] first so that the object casting will result in a datetime object.
 
 
-#for t in ts_dt:
-#    print(t)
-
 tm_np64 = np.array([ np.datetime64('2022-01-01') + np.timedelta64(1,'D') * d for d in range(365) ]).astype("datetime64[ns]")
 
 
-ds_mean = []
+ds_clim = []
 ds_anom = []
 
-#target_varnames = ["IVT", "dMLTdt", "MLG_frc", "MLG_nonfrc"]
+
 target_varnames = ds.keys()
 
-assist = None # For climatology decomposition speed up
+# For testing:
+# target_varnames = ["IWV", "IVT", "dMLTdt", "MLG_frc", "MLG_nonfrc", "MXLDEPTH"]
 
-for _, varname in enumerate(target_varnames):
 
-    print("Doing statistics of ", varname)
-    
+def doStat(varname):
+
+    print("Doing stat of variable: %s" % (varname,))
+
     _da_mean = xr.DataArray(
         name = varname,
         data = np.zeros((len(tm_np64), len(ds.coords["lat"]), len(ds.coords["lon"]))),
@@ -101,27 +111,50 @@ for _, varname in enumerate(target_varnames):
 
             xs = _var.to_numpy()
             
-            tm, xm, xa, cnt, assist = anomalies.decomposeClimAnom(ts_dt, xs, assist=assist)
+            tm, xm, xa, cnt, _ = anomalies.decomposeClimAnom(ts_dt, xs)
 
             _da_mean[:, j, i] = xm
             _da_anom[:, j, i] = xa[:]
 
-    ds_anom.append(_da_anom)
-    ds_mean.append(_da_mean)
 
-ds_anom = xr.merge(ds_anom)
-ds_mean = xr.merge(ds_mean)
+    return _da_mean, _da_anom
 
 
-ds_anom.to_netcdf("ds_anom.nc")
-ds_mean.to_netcdf("ds_mean.nc")
+if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filename_anom)):
+
+    print("Ready to multiprocess the statistical job.")
+    with Pool(processes=args.ncpu) as pool:
+
+        it = pool.imap(doStat, target_varnames)
+        for (_da_mean, _da_anom) in it:
+
+            ds_clim.append(_da_mean)
+            ds_anom.append(_da_anom)
+
+
+
+    print("Stat all done. Merge the outcome")
+
+    ds_clim = xr.merge(ds_clim)
+    ds_anom = xr.merge(ds_anom)
+
+
+    ds_clim.to_netcdf(filename_clim)
+    ds_anom.to_netcdf(filename_anom)
+
+else:
+    print("Files %s and %s already exists. Skip the computation.")
+
+    ds_clim = xr.open_dataset(filename_clim)
+    ds_anom = xr.open_dataset(filename_anom)
+    
 
 # Construct
 t_months = np.arange(1, 7)
 
 ds_stats = {}
 
-for condition_name, (IVT_min, IVT_max) in [
+for condition_name, (IVT_min, IVT_max), in [
     ("clim",  (0, np.inf)   ),
     ("ARf",   (0, 250)      ),
     ("AR",    (250, np.inf )),
@@ -146,7 +179,19 @@ for condition_name, (IVT_min, IVT_max) in [
     )
 
     ds_stats[condition_name] = ds_stat
-    IVT_cond = (ds.IVT >= IVT_min) & (ds.IVT <  IVT_max) & (ds.IWV >= 20.0)
+
+    if condition_name == "clim":
+        IVT_cond = np.isfinite(ds.IVT)
+
+    elif condition_name == "AR":
+        IVT_cond = (ds.IVT >= 250) & (ds.IWV >= 20.0)
+    
+    elif condition_name == "ARf":
+        IVT_cond = (ds.IVT < IVT_min) | ( (ds.IVT >= 250) & (ds.IWV < 20.0) )
+  
+    elif condition_name == "AR+ARf":
+        IVT_cond = np.isfinite(ds.IVT)
+          
    
     #IVT_cond_ndays = ifNdaysInARow(IVT_cond)
  
@@ -155,11 +200,11 @@ for condition_name, (IVT_min, IVT_max) in [
     for m, wm in enumerate(t_months): 
 
         time_cond = ds.time.dt.month.isin(watertime_tools.wm2m(wm))
-        time_clim_cond = ds_mean.time.dt.month.isin(watertime_tools.wm2m(wm))
+        time_clim_cond = ds_clim.time.dt.month.isin(watertime_tools.wm2m(wm))
 
         
         if condition_name == "clim":
-            #_ds_ref = ds_mean
+            #_ds_ref = ds_clim
             #total_cond = time_clim_cond
             
             _ds_ref = ds
