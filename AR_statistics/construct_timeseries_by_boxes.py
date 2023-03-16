@@ -78,7 +78,7 @@ print("### List of divided boxes: ")
 for box in boxes:
     print(box)
 
-ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", ]
+ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "u10", "v10", "t2m", "mtpr", "sst"]
 ECCO_varnames = [
     "dMLTdt",
     "MLT",

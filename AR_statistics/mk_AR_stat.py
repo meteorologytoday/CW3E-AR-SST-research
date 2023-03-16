@@ -232,11 +232,6 @@ for condition_name, (IVT_min, IVT_max), in [
         _ds = _ds_ref.where(total_cond)
 
 
-        #if condition_name == "clim":
-        #    print("MEAN = ")
-        #    print( np.nanmean( _ds["dMLTdt"].to_numpy(), axis=0) ) 
-        #    print("Valid points: ", np.sum(np.isfinite(np.nanmean( _ds["dMLTdt"].to_numpy(), axis=0) ))) 
-
         for varname, _ in ds_stat.items():
 
             _data = _ds[varname].to_numpy()

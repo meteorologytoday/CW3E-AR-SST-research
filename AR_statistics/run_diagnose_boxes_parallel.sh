@@ -2,7 +2,7 @@
 
 . pretty_latlon.sh
 
-
+ncpu=16
 ocn_dataset="ECCO"
 
         
@@ -39,7 +39,7 @@ if [ ! -f "$mask_ERA5" ]; then
 fi
 
 
-for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
+for i in $( seq 1 $(( ${#spatial_rngs[@]} / $nparms )) ); do
 
     lat_min=${spatial_rngs[$(( ( i - 1 ) * $nparms + 0 ))]}
     lat_max=${spatial_rngs[$(( ( i - 1 ) * $nparms + 1 ))]}
@@ -72,7 +72,7 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
         --mask-ECCO $mask_ECCO \
         --ignore-empty-box \
         --output-dir $output_dir \
-        --ncpu 32
+        --ncpu $ncpu
 
     output_img1a=$output_dir/$( printf "fig1a_atmocn_b%d.png" $b )
     output_img1b=$output_dir/$( printf "fig1a_atm_b%d.png" $b )
