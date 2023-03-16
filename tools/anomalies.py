@@ -76,8 +76,10 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
         
         xm[doy[i]-1]  += xs[i]
 
-    xm /= cnt
-        
+    cnt_nz = cnt != 0
+    xm[cnt_nz] /= cnt[cnt_nz]
+    xm[cnt == 0] = np.nan
+
     xa = np.zeros((len(xs),))
     for i, t in enumerate(ts_datetime):
 
