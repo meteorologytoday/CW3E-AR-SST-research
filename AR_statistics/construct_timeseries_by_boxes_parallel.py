@@ -58,7 +58,7 @@ class JOB:
 
 
             cmd = [
-                "python3", "construct_timeseries_by_boxes.py",
+                "python3", "construct_timeseries_by_boxes_2.py",
                 "--beg-year", "%d" % (self.year,),
                 "--end-year", "%d" % (self.year,),
                 "--output-dir", args.output_dir,

@@ -25,15 +25,15 @@ print(args)
 
 ds = xr.open_dataset(args.input)
 
-ds = ds.mean(dim="lon", skipna=True)
+
 
 plot_infos = {
 
     'IWV' : {
         'var'  : "$ \\mathrm{IWV}$",
         'unit' : "$ \\mathrm{kg} / \\mathrm{m}^2 $",
-        'levs' : np.linspace(20, 50, 7),
-        'cmap' : "GnBu",
+        'levs' : np.linspace(20, 50, 6),
+        'cmap' : "bone_r",
     },
 
     'IVT' : {
@@ -49,7 +49,6 @@ plot_infos = {
         'unit' : "$ \\mathrm{m} / \\mathrm{s} $",
         'levs' : np.linspace(0, 30, 7),
         'cmap' : "hot_r",
-        'fmt'  : "%d",
     },
 
 
@@ -78,7 +77,7 @@ print("done")
 
 plot_vars = [
     ("IWV", "IVT"),
-    (None, "MEAN_VEL"),
+    ("MEAN_VEL", None),
 ]
 
 fig, ax = plt.subplots(len(plot_vars), 1, sharex=True, figsize=(5, len(plot_vars) * 3), squeeze=False, gridspec_kw = dict(hspace=0.3, wspace=0.4))

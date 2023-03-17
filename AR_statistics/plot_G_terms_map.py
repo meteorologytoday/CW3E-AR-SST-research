@@ -16,12 +16,14 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--input-dir', type=str, help='Input file', required=True)
 parser.add_argument('--output', type=str, help='Output file', default="")
+parser.add_argument('--varnames', type=str, nargs="+", help='Output file', default=["dMLTdt", "MLG_frc", "MLG_nonfrc"])
+parser.add_argument('--watermonths', type=int, nargs="+", help='Output file', default=[1, 2, 3, 4, 5, 6])
 parser.add_argument('--title', type=str, help='Output title', default="")
 parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
 
-t_months = np.array([1, 2, 3, 4, 5, 6])
+t_months = np.array(args.watermonths)
 
 ds_stat = {}
 for k in ["clim", "AR", "ARf", "AR-ARf", "AR+ARf"]:
@@ -55,44 +57,56 @@ plot_infos_scnario = {
 }
 
 plot_infos = {
+    
     "dMLTdt" : {
         "levels": np.linspace(-1, 1, 11) * 0.5,
         "label" : "$ G_{\mathrm{ttl}} $",
+        "factor" : 1e-6,
     },
 
     "MLG_frc" : {
         "levels": np.linspace(-1, 1, 11) * 0.5,
         "label" : "$ G_{\mathrm{frc}} $",
+        "factor" : 1e-6,
     }, 
+
     "MLG_nonfrc" : {
         "levels": np.linspace(-1, 1, 11) * 0.5,
         "label" : "$ G_{\mathrm{nfrc}} $",
+        "factor" : 1e-6,
     }, 
 
+    "MLG_vdiff" : {
+        "levels": np.linspace(-1, 1, 11) * 0.2,
+        "label" : "$ G_{\mathrm{vdiff}} $",
+        "factor" : 1e-6,
+    }, 
+
+    "MLG_ent" : {
+        "levels": np.linspace(-1, 1, 11) * 0.2,
+        "label" : "$ G_{\mathrm{ent}} $",
+        "factor" : 1e-6,
+    }, 
+
+    "MLG_adv" : {
+        "levels": np.linspace(-1, 1, 11) * 0.2,
+        "label" : "$ G_{\mathrm{adv}} $",
+        "factor" : 1e-6,
+    }, 
+
+    "MXLDEPTH" : {
+        "levels": np.linspace(-1, 1, 11) * 10,
+        "label" : "MXLDEPTH",
+        "factor" : 1.0,
+    }, 
+ 
+    "MLD" : {
+        "levels": np.linspace(-1, 1, 11) * 10,
+        "label" : "MLD",
+        "factor" : 1.0,
+    }, 
+ 
 }
-
-
-plot_ylim = {
-
-    "atmocn" : {
-        "mean" : [-1.5, 1.5],
-        "anom" : [-0.7, 0.7],
-    },
-
-    "atm" : {
-        "mean" : [-1.5, 1.5],
-        "anom" : [-0.3, 0.7],
-    },
-
-    "ocn" : {
-        "mean" : [-0.5, 0.5],
-        #"anom" : [-0.06, 0.01],
-        "anom" : [-0.5, 0.5],
-    },
-
-}
-
-
 
 
 # Plot data
@@ -168,13 +182,15 @@ plot_lat_t = 60.0
 proj = ccrs.PlateCarree(central_longitude=cent_lon)
 proj_norm = ccrs.PlateCarree()
 
-varnames = ["dMLTdt", "MLG_frc", "MLG_nonfrc"]
+varnames = args.varnames
+
 fig, ax = plt.subplots(
     len(varnames), len(t_months),
     figsize=(2.5 * 2 * len(t_months), 2 * len(varnames)),
     subplot_kw=dict(projection=proj),
     gridspec_kw=dict(hspace=0, wspace=0.2),
     constrained_layout=False,
+    squeeze=False,
 )
 
 coords = ds_stat["clim"].coords
@@ -214,7 +230,7 @@ for m, mon in enumerate(t_months):
         _, pvals = student_t_test(_mean1, _std1, _nobs1, _mean2, _std2, _nobs2)        
         
         #_diff = (ds_stat["AR-ARf"][varname][m, :, :, 0] * 1e6).to_numpy()
-        _diff = ((ds_stat["AR"][varname][m, :, :, 0] - ds_stat["clim"][varname][m, :, :, 0]) * 1e6).to_numpy()
+        _diff = ((ds_stat["AR"][varname][m, :, :, 0] - ds_stat["clim"][varname][m, :, :, 0])).to_numpy()
 
         _dot = _diff * 0 
         _significant_idx =  (pvals <= 0.05) 
@@ -225,7 +241,9 @@ for m, mon in enumerate(t_months):
         # Remove insignificant data
         #_diff[np.logical_not(_significant_idx)] = np.nan
 
-        mappables[i] = _ax[i].contourf(coords["lon"], coords["lat"], _diff, levels=plot_infos["dMLTdt"]["levels"], cmap=cmap, extend="both", transform=proj_norm)
+        plot_info = plot_infos[varname]
+
+        mappables[i] = _ax[i].contourf(coords["lon"], coords["lat"], _diff / plot_info["factor"], levels=plot_info["levels"], cmap=cmap, extend="both", transform=proj_norm)
 
         cs = _ax[i].contourf(coords["lon"], coords["lat"], _dot, colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
         
@@ -238,8 +256,8 @@ for m, mon in enumerate(t_months):
         #_ARfreq[_ARfreq >= 0.3] = 0.75
         #_ARfreq[_ARfreq <  0.3] = 0.25
         #_ax[i].contourf(coords["lon"], coords["lat"], ARfreq[m, :, :], colors='none', levels=[0, 0.5, 1], hatches=[None, ".."], transform=proj_norm)
-        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.4, ], colors="k", linestyles='--',  linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
-        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.5, ], colors="k", linestyles='-',linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
+        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.3, ], colors="k", linestyles='--',  linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
+        _ax[i].contour(coords["lon"], coords["lat"], ARfreq[m, :, :], levels=[0.4, ], colors="k", linestyles='-',linewidths=1, transform=proj_norm, alpha=0.8, zorder=10)
        
     for __ax in _ax: 
 

@@ -300,6 +300,7 @@ for d, _t in enumerate(t_vec):
                     },
                 )
 
+                # Create label 
                 for b, box in enumerate(boxes):
 
                     box['ERA5_subset_idx'] = (
@@ -311,13 +312,15 @@ for d, _t in enumerate(t_vec):
                     )
 
                     box['empty_ERA5'] = np.sum(box['ERA5_subset_idx']) == 0
+
                     if box['empty_ERA5']:
                         if args.ignore_empty_box:
                             print("[ERA5] Ignore empty box: %d" % (b,))
                         else:
                             raise Exception("ERROR: No point is selected in ERA5 latlon grid.")
 
-                    box['ERA5_wgts'] = ERA5_grid.wgts.where(box['ERA5_subset_idx'], other=0.0).rename("ERA5_wgts")
+                    #box['ERA5_wgts'] = ERA5_grid.wgts.where(box['ERA5_subset_idx'], other=0.0).rename("ERA5_wgts")
+                    box['ERA5_wgts'] = ERA5_grid.wgts.to_numpy()[box['ERA5_subset_idx']]
 
 
             # Subset after
@@ -413,7 +416,8 @@ for d, _t in enumerate(t_vec):
                             raise Exception("ERROR: No point is selected in ECCO LLC grid.")
 
                     
-                    box['ecco_wgts'] = ecco_grid.rA.where(box['ecco_subset_idx'], other=0.0)
+                    #box['ecco_wgts'] = ecco_grid.rA.where(box['ecco_subset_idx'], other=0.0)
+                    box['ecco_wgts'] = ecco_grid.rA.to_numpy()[box['ecco_subset_idx']]
 
 
             # subset afterwards   
@@ -463,14 +467,14 @@ for d, _t in enumerate(t_vec):
             else:
                 raise Exception("Unknown variable : %s" % (varname,) )
 
-            _masked_data = var_data.where(box[subset_idx_varname])
-            _wgts        = box[subset_wgts_varname]  # already subsetted
-            ts_ds[varname][d] = weightedAvg(_masked_data, _wgts)
+            #_masked_data = var_data.where(box[subset_idx_varname])
+            #_wgts        = box[subset_wgts_varname]  # already subsetted
+            #ts_ds[varname][d] = weightedAvg(_masked_data, _wgts)
  
-            #idx = box[subset_idx_varname]
-            #_masked_data = var_data.to_numpy()[idx]
-            #_wgts        = box[subset_wgts_varname].to_numpy()[idx]  # already subsetted
-            #ts_ds[varname][d] = np.sum(_masked_data * _wgts) / np.sum(_wgts)
+            idx = box[subset_idx_varname]
+            _masked_data = var_data.to_numpy()[idx]
+            _wgts        = box[subset_wgts_varname]  # already subsetted
+            ts_ds[varname][d] = np.sum(_masked_data * _wgts) / np.sum(_wgts)
             
 
 
@@ -555,6 +559,8 @@ print("Merge data_good into each dataset")
 data_good_idx = data_good == 1
 none_is_selected_idx = np.isnan(data_good) # This is an all-false boolean array. It is used to assign an entire dataset as NaN for empty boxes
 for i, ts_ds in enumerate(ts_datasets):
+
+    print(boxes[i].keys())
 
     if boxes[i]['empty_ERA5'] or boxes[i]['empty_ecco']:
         ts_datasets[i] = ts_ds.where(none_is_selected_idx).merge(data_good)

@@ -4,7 +4,10 @@
 output_dir=figures
 mkdir -p $output_dir
 
-data_dir=output_ECCO/1993-2017_10N-60N-n25_120E-120W-n60
+data_dir=output_ECCO_old/1993-2017_10N-60N-n25_120E-120W-n60
+
+echo "Fig S1"
+python3 plot_AR_basic_diagnostics.py --input output_ECCO_old/1993-2017_10N-60N-n25_120E-120W-n60/AR_simple_statistics_1993-2017.nc --output $output_dir/AR_simple_stat.png &
 
 
 echo "Fig 1"
@@ -12,7 +15,7 @@ echo "Fig 1"
 
 
 echo "Fig 2"
-#if [ ] ; then
+if [ ] ; then
 python3 plot_AR_freq.py \
     --input-dir $data_dir \
     --output $output_dir/AR_freq1.png \
@@ -43,12 +46,10 @@ python3 plot_AR_freq.py \
     --markers &
 
 
-#fi
-wait
-exit
+fi
 
 echo "Fig 3"
-python3 plot_G_terms_map.py --input-dir $data_dir --output $output_dir/AR_forcing_partition1.png --no-display
+#python3 plot_G_terms_map.py --input-dir $data_dir --output $output_dir/AR_forcing_partition1.png --no-display
 
 echo "Fig 4"
 #python3 plot_G_terms_map.py --input-dir $data_dir --output $output_dir/AR_forcing_partition1.png --no-display
@@ -61,8 +62,9 @@ spatial_rngs=(
     33 220
     45 183    
 )
+
 nparms=2
-#if [ ] ; then
+if [ ] ; then
 for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
 
     lat=${spatial_rngs[$(( ( i - 1 ) * $nparms + 0 ))]}
@@ -82,6 +84,6 @@ for i in $( seq 1 $(( "${#spatial_rngs[@]}" / $nparms )) ); do
         
     done
 done
-#fi
+fi
 
 wait
