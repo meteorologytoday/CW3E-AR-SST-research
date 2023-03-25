@@ -1,9 +1,12 @@
+print("Loading numpy")
 import numpy as np
+print("done")
 import os.path as path
 #import fmon_tools, watertime_tools
 import anomalies
 import ARstat_tool
 
+import pandas as pd
 print("Loading xarray")
 import xarray as xr
 print("done")
@@ -24,6 +27,8 @@ parser.add_argument('--beg-year', type=int, help='Input file', default=0)
 parser.add_argument('--end-year', type=int, help='Input file', default=0)
 parser.add_argument('--selected-years', type=int, nargs="*", help='separate years. If nonempty then will use this instead of --beg-year and --end-year', default=[])
 
+
+parser.add_argument('--valid-watermonths', type=int, nargs="+", help='Valid watermonths', default=[1, 2, 3, 4, 5, 6])
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--suffix', type=str, help='Suffix for output netcdf', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
@@ -52,11 +57,17 @@ print("Planned output file: ", output_filename)
 
 ds = xr.merge([ds.IWV, ds.IVT, ])
 
-valid_wms = [1, 2, 3, 4, 5, 6]
-        
-empty_arr = np.zeros((len(ds.coords["lat"]), len(ds.coords["lon"])))
+valid_wms = args.valid_watermonths
 
-dims = ["lat", "lon"]
+print("Valid watermonths: ", valid_wms)
+
+year = pd.DatetimeIndex( ["%04d-01-01 00:00:00" % (y,) for y in yrs] )
+
+empty_arr = np.zeros((len(year), len(ds.coords["lat"]), len(ds.coords["lon"])))
+
+dims = ["time", "lat", "lon"]
+
+
 
 output_ds = xr.Dataset(
 
@@ -68,6 +79,7 @@ output_ds = xr.Dataset(
     ),
 
     coords = dict(
+        time       = year,
         lat        = ds.coords["lat"],
         lon        = ds.coords["lon"],
     ),
@@ -81,7 +93,7 @@ for i, yr in enumerate(yrs):
 
     print("Doing statistics of year: ", yr)
 
-    cond = (ds.IVT >= 250) & (ds.IWV >= 20.0) & ds.time.dt.month.isin(watertime_tools.wm2m(wms)) & (ds.time.dt.year == yr )
+    cond = (ds.IVT >= 250) & (ds.IWV >= 20.0) & ds.time.dt.month.isin(watertime_tools.wm2m(valid_wms)) & (ds.time.dt.year == yr )
     ds_subset = ds.where(cond)
 
     # Compute the mean IVT, IWV and v = ds.IVT / ds.IWV
@@ -100,4 +112,4 @@ for i, yr in enumerate(yrs):
 
 
 print("Generating output file: ", output_filename)
-output_ds.to_netcdf(output_filename)
+output_ds.to_netcdf(output_filename,  encoding={'time': {'dtype': 'i4'}})

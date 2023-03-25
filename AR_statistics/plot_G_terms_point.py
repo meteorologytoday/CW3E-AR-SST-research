@@ -29,7 +29,7 @@ print(args)
 plotted_varnames = {
     "atmocn" : ["dMLTdt", "MLG_frc", "MLG_nonfrc"],
     "atm" : ["MLG_frc", "MLG_frc_sw", "MLG_frc_lw", "MLG_frc_sh", "MLG_frc_lh", "MLG_frc_fwf"],
-    "ocn" : ["MLG_nonfrc", "MLG_adv", "MLG_vdiff", "MLG_ent", "MLG_hdiff", "MLG_res2"],
+    "ocn" : ["MLG_nonfrc", "MLG_adv", "MLG_vdiff", "MLG_ent", "MLG_hdiff"],
 }[args.breakdown]
 
 print(plotted_varnames)
@@ -266,7 +266,7 @@ for s, sname in enumerate(["clim", "AR"]):
     _ax = ax[s, 0]
 
     for i, varname in enumerate(plotted_varnames):
-        _data = ds[varname].to_numpy() * 1e6
+        _data = ds[varname].to_numpy() 
 
         #print("data shape: ", _data.shape)
 
@@ -278,16 +278,16 @@ for s, sname in enumerate(["clim", "AR"]):
             kwargs['hatch'] = plot_infos[varname]['hatch']
 
 
-        if sname == "AR":
-            _data -= ds_stat["clim"][varname].to_numpy() * 1e6
+        #if sname == "AR":
+        #    _data -= ds_stat["clim"][varname].to_numpy() 
 
         _ax.bar(t_months + i*bar_width, _data[:, 0],   bar_width, label=plot_infos[varname]['label'], **kwargs)
 
         #print(ds)
-        _anom_ARpARf_data = ds_stat["AR+ARf"][varname].to_numpy() * 1e6
-        _anom_AR_data = ds_stat["AR"][varname].to_numpy() * 1e6
-        _anom_ARf_data = ds_stat["ARf"][varname].to_numpy() * 1e6
-        _mean_data = ds_stat["clim"][varname].to_numpy() * 1e6
+        _anom_ARpARf_data = ds_stat["AR+ARf"][varname].to_numpy() 
+        _anom_AR_data = ds_stat["AR"][varname].to_numpy() 
+        _anom_ARf_data = ds_stat["ARf"][varname].to_numpy() 
+        _mean_data = ds_stat["clim"][varname].to_numpy() 
 
         # error bar
         _error_bar_lower = - _anom_AR_data[:, 1]
@@ -340,8 +340,8 @@ for s, sname in enumerate(["clim", "AR"]):
     _ax.set_axisbelow(True)
 
         
-ax[0, 0].set_ylim([-1.2, 1.2])
-ax[1, 0].set_ylim([-.8, .8])
+#ax[0, 0].set_ylim([-1.2, 1.2])
+#ax[1, 0].set_ylim([-.8, .8])
 
 
 if args.output != "":

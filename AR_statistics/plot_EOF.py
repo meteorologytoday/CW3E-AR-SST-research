@@ -30,12 +30,10 @@ for k in ["clim", "AR", "ARf", "AR-ARf", "AR+ARf"]:
     ds_stat[k] = xr.open_dataset("%s/stat_%s.nc" % (args.input_dir, k))
 
 
-
 # generate AR freq
 #print(np.array([31, 30, 31, 31, 28, 31])[:, None, None]) 
 #print(ds_stat["AR"]["IVT"][:, :, :, 3].to_numpy().shape)
-ARfreq = ds_stat["AR"]["IVT"][:, :, :, 3].to_numpy() / ds_stat["AR+ARf"]["IVT"][:, :, :, 3].to_numpy()
-# / ( np.array([31, 30, 31, 31, 28, 31])[:, None, None] ) / 25
+ARfreq = ds_stat["AR"]["IVT"][:, :, :, 3].to_numpy() / ( np.array([31, 30, 31, 31, 28, 31])[:, None, None] ) / 25
 
 
 plot_infos_scnario = {
@@ -57,7 +55,6 @@ plot_infos_scnario = {
     }
 
 }
-
 
 plot_infos = {
     
@@ -85,13 +82,6 @@ plot_infos = {
         "factor" : 1e-6,
     }, 
 
-    "MLG_hdiff" : {
-        "levels": np.linspace(-1, 1, 11) * 0.2,
-        "label" : "$ G_{\mathrm{hdiff}} $",
-        "factor" : 1e-6,
-    }, 
-
-
     "MLG_ent" : {
         "levels": np.linspace(-1, 1, 11) * 0.2,
         "label" : "$ G_{\mathrm{ent}} $",
@@ -116,40 +106,6 @@ plot_infos = {
         "factor" : 1.0,
     }, 
  
-    "MLG_frc_sw" : {
-        "levels": np.linspace(-1, 1, 11) * 0.5,
-        "label" : "$ G_{\mathrm{sw}} $",
-        "factor" : 1e-6,
-    }, 
-
-    "MLG_frc_lw" : {
-        "levels": np.linspace(-1, 1, 11) * 0.5,
-        "label" : "$ G_{\mathrm{lw}} $",
-        "factor" : 1e-6,
-    }, 
-
-    "MLG_frc_sh" : {
-        "levels": np.linspace(-1, 1, 11) * 0.5,
-        "label" : "$ G_{\mathrm{sen}} $",
-        "factor" : 1e-6,
-    }, 
-
-    "MLG_frc_lh" : {
-        "levels": np.linspace(-1, 1, 11) * 0.5,
-        "label" : "$ G_{\mathrm{lat}} $",
-        "factor" : 1e-6,
-    }, 
-
-    "MLG_frc_fwf" : {
-        "levels": np.linspace(-1, 1, 11) * 0.5,
-        "label" : "$ G_{\mathrm{fwf}} $",
-        "factor" : 1e-6,
-    }, 
-
-
-
-
-
 }
 
 
@@ -244,14 +200,12 @@ cmap.set_over("green")
 cmap.set_under("yellow")
 
 mappables = [ None for i in range(len(varnames)) ]
-for i, mon in enumerate(t_months):
+for m, mon in enumerate(t_months):
 
-    _ax = ax[:, i]
+    _ax = ax[:, m]
   
     s = "AR-ARf"
-
-    m = mon - 1
-
+        
 
     _ax[0].set_title([
         "Oct",
@@ -260,7 +214,6 @@ for i, mon in enumerate(t_months):
         "Jan",
         "Feb",
         "Mar",
-        "Oct-Mar",
     ][m])
 
     for i, varname in enumerate(varnames):

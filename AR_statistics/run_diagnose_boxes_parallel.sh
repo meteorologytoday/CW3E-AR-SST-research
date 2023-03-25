@@ -2,7 +2,7 @@
 
 . pretty_latlon.sh
 
-ncpu=6
+ncpu=26
 ocn_dataset="ECCO"
 
         
@@ -18,9 +18,9 @@ spatial_rngs=(
     48 52 -147 -143  1  1
 )
 
-#    10 60 120 -120  25 60
+
 spatial_rngs=(
-    10 60 120 -120  10 24
+    10 60 120 -120  25 60
 )
 
 nparms=6

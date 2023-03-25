@@ -348,6 +348,13 @@ def computeTendency(target_datetime, grid=None):
         "Gs_vdiff"   : G_vdiff,
         "Gs_sum"     : G_sum,
         "Gs_res"     : G_res,
+
+        # My convention for vertical flux: positive upward
+        "EXF_sw"     : - ds.oceQsw,
+        "EXF_lw"     :   ds.EXFlwnet,
+        "EXF_sh"     : - ds.EXFhs,
+        "EXF_lh"     : - ds.EXFhl,
+        "EXF_fwf"    : - EXF_fwf,
     }
 
 

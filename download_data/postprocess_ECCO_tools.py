@@ -1,7 +1,8 @@
 import numpy as np
 import netCDF4
 import vorticity_tools, advection_tools
-from buoyancy_nonlinear import TS2rho, TS2b
+#from buoyancy_nonlinear import TS2rho, TS2b
+from buoyancy_linear import TS2rho, TS2b  # 3/19/2023 use linear one
 import earth_constants as ec
 import calculus_tools
 #from buoyancy_linear import TS2rho

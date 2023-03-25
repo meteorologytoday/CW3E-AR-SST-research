@@ -121,7 +121,7 @@ lon = None
 f_co = None
 
 computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
-computed_ERA5_vars = []
+computed_ERA5_vars = ["SFCWIND", ]
 
 all_varnames = ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars
 
@@ -202,6 +202,8 @@ def magicalExtension(_data):
     _data["MLG_geo"]  = - ( _data["MLU"] * _data["dMLTdx"] + _data["MLV"] * _data["dMLTdy"] )
     _data["MLG_ageo"] = - ( (_data["MLU"] - _data["U_g"]) * _data["dMLTdx"] + (_data["MLV"] - _data["V_g"]) * _data["dMLTdy"] )
     _data["dTdz_b_over_h"] = _data["dTdz_b"] / _data["MLD"]
+    
+    _data["SFCWIND"] = (_data["u10"]**2.0 + _data["v10"]**2.0)**0.5
     
     _data['MLG_residue'] = _data['dMLTdt'] - (
           _data['MLG_frc_sw']

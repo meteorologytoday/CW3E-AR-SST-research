@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--input-dir', type=str, help='Input file', required=True)
 parser.add_argument('--beg-year', type=int, help='Input file', required=True)
 parser.add_argument('--end-year', type=int, help='Input file', required=True)
+parser.add_argument('--watermonths', type=int, nargs="+", help='Input file', default=[1, 2, 3, 4, 5, 6])
 
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
@@ -37,23 +38,34 @@ output_filename = "%s/AR_simple_statistics_%04d-%04d.nc" % (args.output_dir, arg
 
 print("Planned output file: ", output_filename)
 
-ds = xr.merge([ds.IWV, ds.IVT, ])
-wms = [1, 2, 3, 4, 5, 6]
-        
-empty_arr = np.zeros((len(wms), len(ds.coords["lat"]), len(ds.coords["lon"])))
+output_varnames = ["IVT", "IWV", "MEAN_VEL", "mtpr", "absU10", "u10", "v10"]
 
-dims = ["watermonth", "lat", "lon"]
+MEAN_VEL = (ds.IVT / ds.IWV).rename("MEAN_VEL")
+absU10 = ((ds["u10"]**2 + ds["v10"]**2)**0.5).rename("absU10")
+
+ds = xr.merge([ds.IWV, ds.IVT, ds.u10, ds.v10, ds.mtpr, MEAN_VEL, absU10])
+
+
+wms = args.watermonths
+stat = ["clim", "std", "AR"]
+
+empty_arr = np.zeros((len(wms), len(stat), len(ds.coords["lat"]), len(ds.coords["lon"])))
+
+dims = ["watermonth", "stat", "lat", "lon"]
+
+
+data_vars = {
+    varname : (dims, empty_arr.copy())
+    for varname in output_varnames
+}
 
 output_ds = xr.Dataset(
 
-    data_vars = dict(
-        IVT = (dims, empty_arr.copy()),
-        IWV = (dims, empty_arr.copy()),
-        MEAN_VEL = (dims, empty_arr.copy()),
-    ),
+    data_vars = data_vars,
 
     coords = dict(
         watermonth = wms,
+        stat       = stat,
         lat        = ds.coords["lat"],
         lon        = ds.coords["lon"],
     ),
@@ -61,24 +73,27 @@ output_ds = xr.Dataset(
 )
 
 
+print(list(ds.keys()))
 
 for wm in wms:
 
 
     print("Doing statistics of watermonth: ", wm)
 
-    cond = (ds.IVT >= 250) & (ds.IWV >= 20.0) & ds.time.dt.month.isin(watertime_tools.wm2m(wm))
-    ds_subset = ds.where(cond)
 
+    cond_clim = ds.time.dt.month.isin(watertime_tools.wm2m(wm))
+    cond_AR = (ds.IVT >= 250) & (ds.IWV >= 20.0) & ds.time.dt.month.isin(watertime_tools.wm2m(wm))
+    ds_AR = ds.where(cond_AR)
+    ds_clim = ds.where(cond_clim)
     # Compute the mean IVT, IWV and v = ds.IVT / ds.IWV
-    
-    MEAN_VEL = (ds_subset.IVT / ds_subset.IWV).rename("MEAN_VEL")
-    
-    ds_subset = xr.merge([ds_subset, MEAN_VEL])
+ 
 
-    for varname in ["IVT", "IWV", "MEAN_VEL"]:
+    for varname in output_varnames:
+
         #_mean = ds_subset[varname].mean(dim=("time", "lon"), skipna=True)
-        output_ds[varname][wm-1, :, :] = ds_subset[varname].mean(dim=("time", ), skipna=True)
+        output_ds[varname][wm-1, 0, :, :] = ds_clim[varname].mean(dim=("time", ), skipna=True)
+        output_ds[varname][wm-1, 1, :, :] = ds_clim[varname].std(dim=("time", ), skipna=True)
+        output_ds[varname][wm-1, 2, :, :] = ds_AR[varname].mean(dim=("time", ), skipna=True)
 
 
 

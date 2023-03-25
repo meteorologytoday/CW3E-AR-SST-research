@@ -7,13 +7,12 @@ import ecco_v4_py as ecco
 
 import numpy as np
 import netCDF4
-from buoyancy_nonlinear import TS2rho, TS2b
 import earth_constants as ec
 import calculus_tools
 
 from datetime import (datetime, timedelta)
 
-#from buoyancy_linear import TS2rho
+from buoyancy_linear import TS2rho
 
 default_fill_value = np.nan
 default_fill_value_int = -1

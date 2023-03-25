@@ -21,6 +21,7 @@ parser.add_argument('--beg-year', type=int, help='Input file', required=True)
 parser.add_argument('--end-year', type=int, help='Input file', required=True)
 parser.add_argument('--ncpu', type=int, help='Number of CPUs.', default=4)
 parser.add_argument('--overwrite', help='If we overwrite the output', action="store_true")
+parser.add_argument('--IWV-cond-off', action="store_true")
 
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
@@ -29,7 +30,7 @@ args = parser.parse_args()
 print(args)
 
 if args.output_dir == "":
-    args.output_dir = "%s/climanom_%04d-%04d" % (args.input_dir, args.beg_year, args.end_year, )
+    args.output_dir = "%s/climanom%s_%04d-%04d" % (args.input_dir, ("_IWV-off" if args.IWV_cond_off else "" ), args.beg_year, args.end_year, )
 
 print("Planned output dir: %s" % (args.output_dir,))
 
@@ -47,6 +48,7 @@ MLG_frc = (ds['MLG_frc_sw'] + ds['MLG_frc_lw'] + ds['MLG_frc_sh']  + ds['MLG_frc
 MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
 MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
+
 
 ds = xr.merge(
     [
@@ -74,7 +76,9 @@ ds_clim = []
 ds_anom = []
 
 
-target_varnames = ds.keys()
+target_varnames = list(ds.keys())
+
+print("Target varnames: ", target_varnames)
 
 # For testing:
 # target_varnames = ["IWV", "IVT", "dMLTdt", "MLG_frc", "MLG_nonfrc", "MXLDEPTH"]
@@ -143,14 +147,34 @@ if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filena
     ds_anom.to_netcdf(filename_anom)
 
 else:
-    print("Files %s and %s already exists. Skip the computation.")
+    print("Files %s and %s already exists. Skip the computation." % (filename_clim, filename_anom))
 
     ds_clim = xr.open_dataset(filename_clim)
     ds_anom = xr.open_dataset(filename_anom)
     
 
 # Construct
-t_months = np.arange(1, 7)
+time_constrains = [
+    [1,],
+    [2,],
+    [3,],
+    [4,],
+    [5,],
+    [6,],
+    [1, 2, 3, 4, 5, 6],
+]
+
+time_labels = [
+    "Oct",
+    "Nov",
+    "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Oct-Mar",
+]
+
+
 
 ds_stats = {}
 
@@ -165,13 +189,13 @@ for condition_name, (IVT_min, IVT_max), in [
 
     _tmp = {}
     for varname, _ in ds_anom.items():
-        _tmp[varname] = (["time", "lat", "lon", "stat"], np.zeros((len(t_months), len(ds.coords["lat"]), len(ds.coords["lon"]), 4)) )
+        _tmp[varname] = (["time", "lat", "lon", "stat"], np.zeros((len(time_constrains), len(ds.coords["lat"]), len(ds.coords["lon"]), 4)) )
 
     ds_stat = xr.Dataset(
         _tmp,
 
         coords = {
-            "time" : t_months,
+            "time" : time_labels,
             "lat"  : ds.coords["lat"],
             "lon"  : ds.coords["lon"],
             "stat" : ["mean", "std", "var", "cnt"],
@@ -184,10 +208,16 @@ for condition_name, (IVT_min, IVT_max), in [
         IVT_cond = np.isfinite(ds.IVT)
 
     elif condition_name == "AR":
-        IVT_cond = (ds.IVT >= 250) & (ds.IWV >= 20.0)
+        if args.IWV_cond_off:
+            IVT_cond = (ds.IVT >= 250)
+        else:
+            IVT_cond = (ds.IVT >= 250) & (ds.IWV >= 20.0)
     
     elif condition_name == "ARf":
-        IVT_cond = (ds.IVT < IVT_min) | ( (ds.IVT >= 250) & (ds.IWV < 20.0) )
+        if args.IWV_cond_off:
+            IVT_cond = (ds.IVT < 250)
+        else:
+            IVT_cond = (ds.IVT < 250) | ( (ds.IVT >= 250) & (ds.IWV < 20.0) )
   
     elif condition_name == "AR+ARf":
         IVT_cond = np.isfinite(ds.IVT)
@@ -197,7 +227,7 @@ for condition_name, (IVT_min, IVT_max), in [
  
     #print("SHAPE OF IVT_COND: ", IVT_cond.shape)
  
-    for m, wm in enumerate(t_months): 
+    for m, wm in enumerate(time_constrains): 
 
         time_cond = ds.time.dt.month.isin(watertime_tools.wm2m(wm))
         time_clim_cond = ds_clim.time.dt.month.isin(watertime_tools.wm2m(wm))
