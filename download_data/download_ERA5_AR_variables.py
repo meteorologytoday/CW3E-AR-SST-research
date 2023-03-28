@@ -193,7 +193,7 @@ Path(processed_dir).mkdir(parents=True, exist_ok=True)
 
 
 
-with Pool(processes=4) as pool:
+with Pool(processes=6) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 
