@@ -13,7 +13,8 @@ parser = argparse.ArgumentParser(
                     description = 'Postprocess ECCO data (Mixed-Layer integrated).',
 )
 
-parser.add_argument('--MLD-method', required=True, help="If set then use ECCO MLD instead.", type=str, choices=["RHO", "ECCO"])
+parser.add_argument('--MLD-method', required=True, help="If set then use ECCO MLD instead.", type=str, choices=["RHO", "FIXED500m"])
+parser.add_argument('--nproc', type=int, default=2)
 args = parser.parse_args()
 print(args)
 
@@ -21,7 +22,6 @@ output_root_dir = "data/ECCO_LLC"
 
 MLD_dev = 0.03
 
-nprocs = 32
 
 
 total_days = (end_time - beg_time).days
@@ -42,38 +42,35 @@ class JOB:
 
         time_now_str = "%04d-%02d-%02d" % (y, m, d)
 
+        global args
 
 
 
+        if args.MLD_method == "FIXED500m":
+            
+            extra_dirsuffix = "_500m"
+
+        else:
+            
+            extra_dirsuffix = ""
+        
+        # Phase 1    
+        # This one is computing G terms for each grid cell. Does not depend on MLD_method.
         _tmp = ECCO_helper.getECCOFilename("Gs_ttl", "DAILY", self.t)
         output_filename_G_terms = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
-        
-        _tmp = ECCO_helper.getECCOFilename("MLT", "DAILY", self.t)
-        output_filename_MXLANA = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
 
-        output_filenames = [
-            output_filename_G_terms,
-            output_filename_MXLANA,
-        ]
+        if os.path.isfile(output_filename_G_terms):
+            print("[%s] File %s already exists. Skip." % (time_now_str, output_filename_G_terms))
 
-        for output_filename in output_filenames:
-            dir_name = os.path.dirname(output_filename)
+        else:
+            dir_name = os.path.dirname(output_filename_G_terms)
             if not os.path.isdir(dir_name):
                 print("Create dir: %s" % (dir_name,))
                 Path(dir_name).mkdir(parents=True, exist_ok=True)
-
-
-        all_exist = True
-        for filename in output_filenames:
-            all_exist = all_exist and os.path.isfile(filename)
-
-        if all_exist:
-            print("[%s] Data already exists. Skip." % (time_now_str, ))
-
-        else:
-
-            print("[%s] Now postprocessing..." % (time_now_str,))
-
+            
+            
+            print("[%s] Now computing G terms..." % (time_now_str,))
+            
             tends = ECCO_helper.computeTendency(self.t)
 
             ds = xr.Dataset(data_vars={})
@@ -85,11 +82,35 @@ class JOB:
 
             print("Output: ", output_filename_G_terms)
             ds.to_netcdf(output_filename_G_terms, format='NETCDF4')
+           
 
-            print("Comput mixed-layer integrated terms.")
+        # Phase 2
+        # This one computes the mixed-layer integrated quantities
+        _tmp = ECCO_helper.getECCOFilename("MLT", "DAILY", self.t, extra_dirsuffix=extra_dirsuffix)
+        output_filename_MXLANA = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
+        
+        dir_name = os.path.dirname(output_filename_MXLANA)
+        if not os.path.isdir(dir_name):
+            print("Create dir: %s" % (dir_name,))
+            Path(dir_name).mkdir(parents=True, exist_ok=True)
+        
+        if os.path.isfile(output_filename_MXLANA):
+            print("[%s] File %s already exists. Skip." % (time_now_str, output_filename_MXLANA))
+
+        else:
+             
+            print("[%s] Now compute the mixed-layer integrated quantities. Method = %s" % (time_now_str, args.MLD_method))
+            
+            if args.MLD_method == "RHO":
+                fixed_MLD = -1.0
+
+            elif args.MLD_method == "FIXED500m":
+                fixed_MLD = 500.0
+
             postprocess_ECCO_tools.processECCO(
                 self.t,
                 output_filename_MXLANA,
+                fixed_MLD=fixed_MLD, 
             ) 
  
 def wrap_retrieve(job):
@@ -105,7 +126,6 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
-    """
     if 5 <= new_d.month and new_d.month <= 8 :
         continue
  
@@ -115,14 +135,13 @@ for d in range(total_days):
  
     if new_d.month == 9 and new_d.day != 30:
         continue
-    """
 
     jobs.append(JOB(new_d))
 
 
 print("Total jobs: %d" % (len(jobs),))
 
-with Pool(processes=nprocs) as pool:
+with Pool(processes=args.nproc) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 

@@ -149,7 +149,7 @@ def getECCOGrid():
     return ecco_grid 
 
 
-def getECCOFilename(varname, time_character, target_datetime, grid="LLC", version=4, release=4):
+def getECCOFilename(varname, time_character, target_datetime, grid="LLC", version=4, release=4, extra_dirsuffix=""):
 
 
     if time_character not in ["DAILY", "SNAPSHOT"]:
@@ -163,7 +163,7 @@ def getECCOFilename(varname, time_character, target_datetime, grid="LLC", versio
     dirsuffix = "%s_%s_%s" % (grid_mapping[grid]["dir"], time_character_mapping[time_character]["dir"], dirrelease)
     dirmidfix = map_varname_pathinfo[varname]["dirmidfix"]
 
-    dirname = "ECCO_L4_%s_%s" % (dirmidfix, dirsuffix)
+    dirname = "ECCO_L4_%s_%s%s" % (dirmidfix, dirsuffix, extra_dirsuffix)
 
    
 
@@ -348,19 +348,25 @@ def computeTendency(target_datetime, grid=None):
         "Gs_vdiff"   : G_vdiff,
         "Gs_sum"     : G_sum,
         "Gs_res"     : G_res,
+    }
 
+    for k, v in result.items():
+        result[k] = v.transpose('time', 'k', 'tile', 'j', 'i')
+
+
+
+    """
+    # I realize that data is already there. No need to do this
+    result2D = {
         # My convention for vertical flux: positive upward
         "EXF_sw"     : - ds.oceQsw,
         "EXF_lw"     :   ds.EXFlwnet,
         "EXF_sh"     : - ds.EXFhs,
         "EXF_lh"     : - ds.EXFhl,
-        "EXF_fwf"    : - EXF_fwf,
+        "EXF_fwf"    : - EXFfwf,
     }
+    """
 
-
-    for k, v in result.items():
-        
-        result[k] = v.transpose('time', 'k', 'tile', 'j', 'i')
 
 
     return result

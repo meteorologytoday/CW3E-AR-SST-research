@@ -1,9 +1,15 @@
 #!/bin/bash
 
 
-for MLD_method in RHO ; do
-    python3 postprocess_ECCO.py --MLD-method $MLD_method
+
+
+for MLD_method in RHO FIXED500m; do
+    python3 postprocess_ECCO.py --MLD-method $MLD_method --nproc 16 &
 done
     
+wait
 
+
+
+# No need to remap now
 #./postprocess_remap_ECCO.sh

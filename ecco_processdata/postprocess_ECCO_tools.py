@@ -215,10 +215,20 @@ def processECCO(
     target_datetime,
     output_filename,
     MLD_dev = 0.03,
+    fixed_MLD = -1.0, # if this option is positive, then MLD will be assignd with this value
 ):
 
-    print("Target datetime: ", target_datetime)
-    print("Output filename: ", output_filename)
+    print("[processECCO] Target datetime: ", target_datetime)
+    print("[processECCO] Output filename: ", output_filename)
+
+
+    if fixed_MLD <= 0:
+        
+        print("Notice: the parameter `fixed_MLD` is negative. Later on the mixed-layer depth will be determined dynamically.")
+
+    else:
+        
+        print("Notice: the parameter `fixed_MLD` = %f is positive. Later on the mixed-layer depth will be assigned to this value." % (fixed_MLD, ))
 
     beg_datetime = target_datetime # - timedelta(days=1)
 
@@ -290,13 +300,19 @@ def processECCO(
     for s in range(2):
         for l in range(Nl):
 
-            ML_snp["MLDs_snp"][s, l, :, :] = findMLD_rho(
-                rho_snp[s, :, l, :, :].to_numpy(),
-                z_T,
-                mask=mask2D[l],
-                Nz_bot=Nz_bot[l],
-                dev=MLD_dev,
-            )
+            if fixed_MLD <= 0:
+
+                ML_snp["MLDs_snp"][s, l, :, :] = findMLD_rho(
+                    rho_snp[s, :, l, :, :].to_numpy(),
+                    z_T,
+                    mask=mask2D[l],
+                    Nz_bot=Nz_bot[l],
+                    dev=MLD_dev,
+                )
+                
+            else:
+
+                ML_snp["MLDs_snp"][s, l, :, :] = fixed_MLD
 
             ML_snp["MLTs_snp"][s, l, :, :] = computeMLMean(
                 sTHETA_snp[s, :, l, :, :].to_numpy(),
