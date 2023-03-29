@@ -34,8 +34,13 @@ def getTheFarthestPtsOnSphere(pts):
 
     # Looking for the most distant points
     # two points which are fruthest apart will occur as vertices of the convex hulil
-    candidates = pts[spatial.ConvexHull(pts).vertices, :]
-    #candidates = pts
+
+    try:
+        candidates = pts[spatial.ConvexHull(pts).vertices, :]
+    except Exception as e:
+        print("Something happen with QhHull: ", str(e))
+
+        candidates = pts
 
     # get distances between each pair of candidate points
     # dist_mat = spatial.distance_matrix(candidates, candidates)
@@ -84,14 +89,17 @@ def detectARObjects(IVT, coord_lat, coord_lon, area, IVT_threshold, weight=None,
         pts[:, 0] = coord_lat[idx]
         pts[:, 1] = coord_lon[idx]
         
-        if Npts >= 10:
             
-            farthest_pair, farthest_dist = getTheFarthestPtsOnSphere(pts)
-            
-        else:
-           
-            farthest_dist = 0.0 
-            farthest_pair = ( pts[0, :], pts[0, :] )
+        farthest_pair, farthest_dist = getTheFarthestPtsOnSphere(pts)
+
+        #if Npts >= 10:
+        #    
+        #    farthest_pair, farthest_dist = getTheFarthestPtsOnSphere(pts)
+        #    
+        #else:
+        #   
+        #    farthest_dist = 0.0 
+        #    farthest_pair = ( pts[0, :], pts[0, :] )
 
         if weight is None:
             _wgt = covered_area
