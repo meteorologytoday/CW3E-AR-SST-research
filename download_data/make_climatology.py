@@ -82,7 +82,11 @@ def doJob(target_date):
 
             ds = xr.open_dataset(output_filename_tmp)
             ds = ds.assign_coords(coords=dict(time=[target_date,]))
-            ds.to_netcdf(output_filename, encoding={'time': {'dtype': 'i4'}})
+            ds.to_netcdf(
+                output_filename,
+                unlimited_dims=["time",],
+                encoding={'time': {'dtype': 'i4'}},
+            )
 
             pleaseRun("rm %s" % output_filename_tmp)
 

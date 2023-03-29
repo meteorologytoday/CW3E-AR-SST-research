@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--method', required=True, type=str, choices=["ANOM_LEN", "TOTIVT250"])
 parser.add_argument('--AR-clim-dir', required=True, type=str)
-parser.add_argument('--leftmost-lon', type=float, help='The leftmost longitude on the map. It matters when doing object detection finding connectedness.', default=90.0)
+parser.add_argument('--leftmost-lon', type=float, help='The leftmost longitude on the map. It matters when doing object detection finding connectedness.', default=0)
 parser.add_argument('--nproc', type=int, default=1)
 args = parser.parse_args()
 print(args)
@@ -65,7 +65,7 @@ def doJob(dt):
             print("[%s] Warning: File %s already exists. Skip this." % (jobname,))
             return None
 
-        
+         
             
         print("[%s] Making %s with input files: %s, %s." % (jobname, output_file, AR_full_file, AR_clim_file))
 
@@ -75,6 +75,8 @@ def doJob(dt):
         # Load anom
         ds_full = xr.open_dataset(AR_full_file)
         ds_clim = xr.open_dataset(AR_clim_file)
+        
+        old_lon = ds_full.coords["lon"].to_numpy()
 
         # find the lon=0
         lon_first_zero = np.argmax(ds_full.coords["lon"].to_numpy() >= args.leftmost_lon)
@@ -83,7 +85,7 @@ def doJob(dt):
         ds_clim = ds_clim.roll(lon=-lon_first_zero, roll_coords=True)
         
         lat = ds_full.coords["lat"].to_numpy() 
-        lon = ds_full.coords["lon"].to_numpy()  % 360
+        lon = old_lon  % 360
       
         # For some reason we need to reassign it otherwise the contourf will be broken... why??? 
         ds_full = ds_full.assign_coords(lon=lon) 
@@ -150,15 +152,21 @@ def doJob(dt):
             ),
 
             coords=dict(
-                lon=(["lon"], lon),
-                lat=(["lat"], lat),
+                lon=(["lon"], old_lon, dict(units="degrees_east")),
+                lat=(["lat"], lat, dict(units="degrees_north")),
                 time=(["time"], [dt,]),
             ),
 
             attrs=dict(description="AR objects file."),
         )
 
-        ds_out.to_netcdf(output_file, encoding={'time': {'dtype': 'i4'}})
+        ds_out = ds_out.roll(lon=lon_first_zero, roll_coords=False)
+      
+        ds_out.to_netcdf(
+            output_file,
+            unlimited_dims=["time",],
+            encoding={'time': {'dtype': 'i4'}},
+        )
 
     except Exception as e:
 

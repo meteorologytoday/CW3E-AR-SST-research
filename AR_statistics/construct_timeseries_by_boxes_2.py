@@ -52,6 +52,8 @@ print(args)
 beg_date = datetime(args.beg_year-1, 10,  1 )
 end_date = datetime(args.end_year,    4,  1 )
 
+end_date = datetime(args.beg_year-1, 10, 3)
+
 
 total_days = (end_date - beg_date).days
 
@@ -79,6 +81,7 @@ boxes = map_divide_tools.makeDividedBoxes(lon_bnds, lat_bnds)
 #    print(box)
 
 ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "u10", "v10", "t2m", "mtpr", "sst"]
+ERA5ARobj_varnames = ["map", ]
 ECCO_varnames = [
     "dMLTdt",
     "MLT",
@@ -120,8 +123,13 @@ lat = None
 lon = None
 f_co = None
 
+ARdetect_methods = ["ANOM_LEN", "TOTIVT250"]
+
 computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
 computed_ERA5_vars = ["SFCWIND", ]
+
+for method in ARdetect_methods:
+    computed_ERA5_vars.append("map_%s" % method,)
 
 all_varnames = ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars
 
@@ -148,7 +156,7 @@ print("Construct output datasets: full_dataset")
 full_dataset = xr.Dataset(
     { 
         varname : (['time', 'lat', 'lon', ], np.zeros((total_days, len(lat_bnds)-1, len(lon_bnds)-1), dtype=np.float64)) 
-        for varname in (ERA5_varnames + ECCO_varnames + computed_LLC_vars + computed_ERA5_vars) 
+        for varname in all_varnames
     },
 
     coords = {
@@ -222,6 +230,14 @@ def magicalExtension(_data):
     res = _data["MLG_residue"].to_numpy()
     res_max = np.amax(np.abs(res[np.isfinite(res)]))
     print("Max of abs(MLG_residue): ", res_max)
+
+
+    for method in ARdetect_methods:
+        _tmp = _data["map_%s" % method].to_numpy()
+        _tmp[np.isfinite(_tmp) & (_tmp != 0)] = 1.0
+        _data["map_%s" % method][:] = _tmp
+
+
     
 
 ditch_this_wateryear = np.nan
@@ -338,36 +354,8 @@ for d, _t in enumerate(t_vec):
             I_have_all_data_for_today = False
 
 
-    """
-    # Special: compute dSST/dt as variable "dTdt"
-    try:
 
-        varname = "sst"
-        load_varname = varname
 
-        # Load observation (the 'truth')
-        info_l = load_data.getFileAndIndex("ERA5", _t + timedelta(days=-1), root_dir="data", varname=varname)
-        info_r = load_data.getFileAndIndex("ERA5", _t + timedelta(days=1), root_dir="data", varname=varname)
-
-        
-        print("Load `%s` from file: %s" % (load_varname, info_l['filename']))
-        _var_l = (xr.open_dataset(info_l["filename"])[varname]).isel(time=0).where(ERA5_subset_idx)
-        
-        print("Load `%s` from file: %s" % (load_varname, info_r['filename']))
-        _var_r = (xr.open_dataset(info_r["filename"])[varname]).isel(time=0).where(ERA5_subset_idx)
-
-        dvardt = (_var_r - _var_l) / (2 * 86400.0)
-        _data['ERA5_MLG_ttl'] = (_var_r - _var_l) / (2 * 86400.0)
-
-    except Exception as e:
-
-        print(traceback.format_exc()) 
-        print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
-
-        I_have_all_data_for_today = False
-
-    #del info
-    """
     ############ Loading ECCOv4 data ############
 
     try:
@@ -388,7 +376,8 @@ for d, _t in enumerate(t_vec):
             ds_ECCO = ds_ECCO.astype(np.float64)
 
             if ecco_grid is None:
-                
+               
+                print("`ecco_grid` is None. Generating it and related box information.") 
                 mask_ECCO = xr.open_dataset(args.mask_ECCO).mask.to_numpy()
 
                 ecco_grid = ECCO_helper.getECCOGrid()
@@ -430,6 +419,33 @@ for d, _t in enumerate(t_vec):
 
         print(traceback.format_exc()) 
         print("ECCO: Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
+
+        I_have_all_data_for_today = False
+
+
+    # Load ERA5 AR objects data
+            
+    try:
+
+        for method in ARdetect_methods:
+
+            for i, varname in enumerate(ERA5ARobj_varnames):
+
+                load_varname = varname
+
+                info = load_data.getFileAndIndex("ERA5_ARobj", _t, root_dir="data", varname=varname, method=method)
+
+                print("Load `%s` from file: %s" % ( varname, info['filename'] ))
+
+                ds_ERA5ARobj = xr.open_dataset(info["filename"])
+                _var = ds_ERA5ARobj[varname].isel(time=0)
+
+                _data["%s_%s" % (load_varname, method)] = _var.load()
+
+    except Exception as e:
+
+        print(traceback.format_exc()) 
+        print("Someting wrong happened when loading date: %s" % (_t.strftime("%Y-%m-%d"),))
 
         I_have_all_data_for_today = False
 
@@ -562,14 +578,14 @@ data_good_idx = data_good == 1
 none_is_selected_idx = np.isnan(data_good) # This is an all-false boolean array. It is used to assign an entire dataset as NaN for empty boxes
 for i, ts_ds in enumerate(ts_datasets):
 
-    print(boxes[i].keys())
+    #print(boxes[i].keys())
 
     if boxes[i]['empty_ERA5'] or boxes[i]['empty_ecco']:
         ts_datasets[i] = ts_ds.where(none_is_selected_idx).merge(data_good)
     else: 
         ts_datasets[i] = ts_ds.where(data_good_idx).merge(data_good)
 
-print("Merge each timeseries into a complete file (experimental).")
+print("Merge each timeseries into a complete file.")
 for b, box in enumerate(boxes):
     
     i = box["i"]
@@ -603,7 +619,8 @@ if args.output_dir != "":
     print("Output filename: %s" % ( output_filename_full_dataset, ))
     full_dataset.to_netcdf(
         output_filename_full_dataset,
-        unlimited_dims=["time",]
+        unlimited_dims=["time",],
+        encoding={'time': {'dtype': 'i4'}},
     )
  
     

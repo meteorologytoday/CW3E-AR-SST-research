@@ -4,7 +4,8 @@
 
 
 for MLD_method in RHO FIXED500m; do
-    python3 postprocess_ECCO.py --MLD-method $MLD_method --nproc 16 &
+#for MLD_method in RHO ; do
+    python3 postprocess_ECCO.py --MLD-method $MLD_method --nproc 1 &
 done
     
 wait

@@ -120,7 +120,17 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
         lon = "lon"
 
 
+    elif product == "ERA5_ARobj":
 
+        subfolder = "ARobjs_%s" % (kwargs["method"],)
+        filename  = "ERA5_ARobjs_%s.nc" % (date.strftime("%Y-%m-%d"),)
+
+        filename = os.path.join(root_dir, "ERA5", subfolder, filename)
+
+        idx = 0
+        lat = "lat"
+        lon = "lon"
+ 
     else:
         raise Exception("Unrecognized product: %s" % (product,))
 
@@ -132,6 +142,7 @@ def getFileAndIndex(product, date, root_dir="data", varname="", **kwargs):
             'lon': lon,
         },
     }
+
     return info
         
     

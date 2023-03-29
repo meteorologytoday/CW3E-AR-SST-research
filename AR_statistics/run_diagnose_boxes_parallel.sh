@@ -2,7 +2,8 @@
 
 . pretty_latlon.sh
 
-ncpu=26
+ncpu=1
+#26
 ocn_dataset="ECCO"
 
         
@@ -10,12 +11,12 @@ output_root=output_${ocn_dataset}
 
 beg_year=1993
 end_year=2017
+end_year=1993
 
 
 # format: lat_m lat_M lon_m lon_M lat_nbox lon_nbox
 spatial_rngs=(
     10 60 -160 -120  10 8
-    48 52 -147 -143  1  1
 )
 
 
