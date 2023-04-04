@@ -4,7 +4,7 @@ exec(code)
 
 import numpy as np
 import argparse
-import ECCO_helper
+import ECCO_helper, ECCO_computeTendency
 import xarray as xr
 import postprocess_ECCO_tools
 
@@ -71,7 +71,7 @@ class JOB:
             
             print("[%s] Now computing G terms..." % (time_now_str,))
             
-            tends = ECCO_helper.computeTendency(self.t)
+            tends = ECCO_computeTendency.computeTendency(self.t)
 
             ds = xr.Dataset(data_vars={})
             for varname, G in tends.items():
@@ -85,6 +85,26 @@ class JOB:
            
 
         # Phase 2
+        # This one computes the advection. Does not depend on MLD_method.
+        _tmp = ECCO_helper.getECCOFilename("HADV_g", "DAILY", self.t)
+        output_filename_ADV = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])
+        
+        dir_name = os.path.dirname(output_filename_ADV)
+        if not os.path.isdir(dir_name):
+            print("Create dir: %s" % (dir_name,))
+            Path(dir_name).mkdir(parents=True, exist_ok=True)
+        
+        if os.path.isfile(output_filename_ADV):
+            print("[%s] File %s already exists. Skip." % (time_now_str, output_filename_ADV))
+
+        else:
+            print("[%s] Now compute the advection." % (time_now_str, ))
+            
+            ds = ECCO_computeTendency.computeTendencyAdv(self.t)
+            print("Output: ", output_filename_ADV)
+            ds.to_netcdf(output_filename_ADV, format='NETCDF4')
+ 
+        # Phase 3
         # This one computes the mixed-layer integrated quantities
         _tmp = ECCO_helper.getECCOFilename("MLT", "DAILY", self.t, extra_dirsuffix=extra_dirsuffix)
         output_filename_MXLANA = "%s/%s/%s" % (output_root_dir, _tmp[0], _tmp[1])

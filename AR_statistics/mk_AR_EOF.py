@@ -19,7 +19,7 @@ print(args)
 ds = xr.open_dataset(args.input)
 
 
-ds = ds.where(ds.coords['lat'] > 20)
+#ds = ds.where(ds.coords['lat'] > 20)
 
 print(list(ds.keys()))
 

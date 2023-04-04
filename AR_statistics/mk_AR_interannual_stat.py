@@ -32,6 +32,8 @@ parser.add_argument('--valid-watermonths', type=int, nargs="+", help='Valid wate
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--suffix', type=str, help='Suffix for output netcdf', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
+parser.add_argument('--AR-algo', type=str, help='Output title', default="Rutz2017", choices=["Rutz2017", "ANOM_LEN", "TOTIVT250"])
+
 parser.add_argument('--no-display', action="store_true")
 args = parser.parse_args()
 print(args)
@@ -49,13 +51,13 @@ if args.output_dir == "":
     args.output_dir = args.input_dir
 
 if len(args.selected_years) != 0:
-    output_filename = "%s/AR_interannual_statistics_selected_years%s.nc" % (args.output_dir, args.suffix)
+    output_filename = "%s/AR_interannual_statistics_%s_selected_years%s.nc" % (args.output_dir, args.AR_algo, args.suffix)
 else:
-    output_filename = "%s/AR_interannual_statistics_%04d-%04d%s.nc" % (args.output_dir, args.beg_year, args.end_year, args.suffix)
+    output_filename = "%s/AR_interannual_statistics_%s_%04d-%04d%s.nc" % (args.output_dir, args.AR_algo, args.beg_year, args.end_year, args.suffix)
 
 print("Planned output file: ", output_filename)
 
-ds = xr.merge([ds.IWV, ds.IVT, ])
+ds = xr.merge([ds.IWV, ds.IVT, ds.map_ANOM_LEN, ds.map_TOTIVT250])
 
 valid_wms = args.valid_watermonths
 
@@ -86,6 +88,17 @@ output_ds = xr.Dataset(
 
 )
 
+if args.AR_algo == "Rutz2017":
+    
+    AR_cond = (ds.IVT >= 250) & (ds.IWV >= 20.0)
+
+elif args.AR_algo == "ANOM_LEN":
+
+    AR_cond = ds.map_ANOM_LEN > 0
+
+elif args.AR_algo == "TOTIVT250":
+    
+    AR_cond = ds.map_TOTIVT250 > 0
 
 
 for i, yr in enumerate(yrs):
@@ -93,7 +106,7 @@ for i, yr in enumerate(yrs):
 
     print("Doing statistics of year: ", yr)
 
-    cond = (ds.IVT >= 250) & (ds.IWV >= 20.0) & ds.time.dt.month.isin(watertime_tools.wm2m(valid_wms)) & (ds.time.dt.year == yr )
+    cond = AR_cond & ds.time.dt.month.isin(watertime_tools.wm2m(valid_wms)) & (ds.time.dt.year == yr )
     ds_subset = ds.where(cond)
 
     # Compute the mean IVT, IWV and v = ds.IVT / ds.IWV

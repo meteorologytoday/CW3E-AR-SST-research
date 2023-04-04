@@ -29,6 +29,7 @@ parser.add_argument('--lon-nbox',   type=int, help='Longitude range. 0-360', req
 parser.add_argument('--mask-ERA5',  type=str, help='mask file of ERA5', required=True)
 parser.add_argument('--mask-ECCO',  type=str, help='mask file of ECCO', required=True)
 parser.add_argument('--ignore-empty-box',  action="store_true")
+parser.add_argument('--fixed-500m',  action="store_true")
 args = parser.parse_args()
 
 print(args)
@@ -69,6 +70,7 @@ class JOB:
                 "--lon-nbox", "%d" % args.lon_nbox,
                 "--mask-ERA5", args.mask_ERA5,
                 "--mask-ECCO", args.mask_ECCO,
+                "--fixed-500m" if args.fixed_500m else "",
             ]
 
             if args.ignore_empty_box:

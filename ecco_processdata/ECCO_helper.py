@@ -5,11 +5,12 @@ import xgcm
 import ecco_v4_py as ecco
 import numpy as np
 
-rhoconst = 1029.0
+rhoConst = 1029.0
 c_p = 3994.0
 R = 0.62
 zeta1 = 0.06
-zeta2 = 20.0
+zeta2 = 20.0    
+Omega = (2*np.pi)/86164
 
 ECCO_root_dir = "data/ECCO_LLC"
 ECCO_grid_dir = "ECCO_L4_GEOMETRY_LLC0090GRID_V4R4"
@@ -71,6 +72,12 @@ ECCO_mapping = {
                      "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf",
                      "Gs_sum", "Gs_res"],
     },
+
+    "POSTPROC_ADV_TERMS" : {
+        "fileprefix": "ADV",
+        "varnames": ["HADV_g", "HADV_ag", "VADV", "U_g", "V_g", "U_ag", "V_ag"],
+    },
+
 
 
     "POSTPROC_MXLANA" : {
@@ -145,7 +152,6 @@ def getECCOGrid():
 
     ecco_grid = ecco.load_ecco_grid_nc("%s/%s" % (ECCO_root_dir, ECCO_grid_dir), ECCO_grid_filename)
     
-
     return ecco_grid 
 
 
@@ -231,144 +237,18 @@ def loadECCOData_continuous(
 
 
     ds = xr.merge(full_list)
-    ds.time_snp.attrs['c_grid_axis_shift'] = - 0.5
+
+    if "time_snp" in ds:
+        ds.time_snp.attrs['c_grid_axis_shift'] = - 0.5
+
+    else:
+        if len(snp_varnames) > 0:
+            raise Exception("Axis `time_snp` does not exist but snapshot variables' are loaded.")
+
 
     return ds
 
 
 
-
-# Reference: https://ecco-v4-python-tutorial.readthedocs.io/ECCO_v4_Heat_budget_closure.html
-def computeTendency(target_datetime, grid=None):
-    snp_varnames = ["THETA", "ETAN"]
-    ave_varnames = [ 
-        "TFLUX", "oceQsw", "EXFlwnet", "EXFhl", "EXFhs",
-        "ADVx_TH", "ADVy_TH", "ADVr_TH", "DFxE_TH", "DFyE_TH", "DFrE_TH", "DFrI_TH", ] 
-
-    ds = loadECCOData_continuous(
-        beg_datetime = target_datetime,
-        ndays = 1,
-        snp_varnames = snp_varnames,
-        ave_varnames = ave_varnames,
-    )
-    xgcm_grid = ecco.get_llc_grid(ds)
-
- 
-    delta_t = xgcm_grid.diff(ds.time_snp, 'T', boundary='fill', fill_value=np.nan).astype('f4') / 1e9 # nanosec to sec 
-
-    ecco_grid = getECCOGrid()
-    vol = (ecco_grid.rA*ecco_grid.drF*ecco_grid.hFacC).transpose('tile','k','j','i')
-
-    s_star_snap = 1 + ds.ETAN_snp / ecco_grid.Depth
-    sTHETA = ds.THETA_snp * s_star_snap
-    G_ttl = xgcm_grid.diff(sTHETA, 'T', boundary='fill', fill_value=0.0)/delta_t
-
-    ADVxy_diff = xgcm_grid.diff_2d_vector({'X' : ds.ADVx_TH, 'Y' : ds.ADVy_TH}, boundary = 'fill')
-
-    adv_hConvH = (-(ADVxy_diff['X'] + ADVxy_diff['Y']))
-
-    ADVr_TH = ds.ADVr_TH.transpose('time','tile','k_l','j','i')
-    adv_vConvH = xgcm_grid.diff(ADVr_TH, 'Z', boundary='fill')
-
-    G_hadv = adv_hConvH / vol
-    G_vadv = adv_vConvH / vol
-
-
-    DFxyE_diff = xgcm_grid.diff_2d_vector({'X' : ds.DFxE_TH, 'Y' : ds.DFyE_TH}, boundary = 'fill')
-
-    # Convergence of horizontal diffusion (degC m^3/s)
-    dif_hConvH = (-(DFxyE_diff['X'] + DFxyE_diff['Y']))
-
-    # Load monthly averages of vertical diffusive fluxes
-    DFrE_TH = ds.DFrE_TH.transpose('time','tile','k_l','j','i')
-    DFrI_TH = ds.DFrI_TH.transpose('time','tile','k_l','j','i')
-
-    # Convergence of vertical diffusion (degC m^3/s)
-    dif_vConvH = xgcm_grid.diff(DFrE_TH, 'Z', boundary='fill') + xgcm_grid.diff(DFrI_TH, 'Z', boundary='fill')
-
-    G_hdiff = dif_hConvH / vol
-    G_vdiff = dif_vConvH / vol
-
-    Z = ecco_grid.Z.load()
-    RF = np.concatenate([ecco_grid.Zp1.values[:-1],[np.nan]])
-
-    q1 = R*np.exp(1.0/zeta1*RF[:-1]) + (1.0-R)*np.exp(1.0/zeta2*RF[:-1])
-    q2 = R*np.exp(1.0/zeta1*RF[1:]) + (1.0-R)*np.exp(1.0/zeta2*RF[1:])
-
-
-    zCut = np.where(Z < -200)[0][0]
-    q1[zCut:] = 0
-    q2[zCut-1:] = 0
-
-
-    q1 = xr.DataArray(q1,coords=[Z.k],dims=['k'])
-    q2 = xr.DataArray(q2,coords=[Z.k],dims=['k'])
-
-    mskC = ecco_grid.hFacC.copy(deep=True).load()
-
-    # Change all fractions (ocean) to 1. land = 0
-    mskC.values[mskC.values>0] = 1
-    forcH_subsurf_sw = ((q1*(mskC==1)-q2*(mskC.shift(k=-1)==1))*ds.oceQsw).transpose('time','tile','k','j','i')
-
-
-    forcH_surf_sw = ( (q1[0]-q2[0]) * ds.oceQsw
-              *mskC[0]).transpose('time','tile','j','i').assign_coords(k=0).expand_dims('k')
-
-    forcH_sw = xr.concat([forcH_surf_sw,forcH_subsurf_sw[:,:,1:]], dim='k').transpose('time','tile','k','j','i')
-
-    forcH_surf_nonsw_shape = (( ds.TFLUX * 0 + 1 )
-              *mskC[0]).transpose('time','tile','j','i').assign_coords(k=0).expand_dims('k')
-    forcH_subsurf_nonsw_shape = forcH_subsurf_sw * 0
-
-    forcH_nonsw_shape = xr.concat([forcH_surf_nonsw_shape,forcH_subsurf_nonsw_shape[:,:,1:]], dim='k').transpose('time','tile','k','j','i')
-
-    
-    EXFfwf = ds.TFLUX - ds.oceQsw - ds.EXFhl - ds.EXFhs + ds.EXFlwnet
-
-    G_frc_sw  = forcH_sw                            / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
-    G_frc_lw  = forcH_nonsw_shape * (- ds.EXFlwnet) / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
-    G_frc_sh  = forcH_nonsw_shape * ds.EXFhs        / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
-    G_frc_lh  = forcH_nonsw_shape * ds.EXFhl        / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
-    G_frc_fwf = forcH_nonsw_shape * EXFfwf          / (rhoconst*c_p) / (ecco_grid.hFacC*ecco_grid.drF)
-
-
-    G_sum = G_hadv + G_vadv + G_hdiff + G_vdiff + G_frc_sw + G_frc_lw + G_frc_sh + G_frc_lh + G_frc_fwf
-    G_res = G_sum - G_ttl
-
-    result = {
-        "Gs_ttl"     : G_ttl,
-        "Gs_hadv"    : G_hadv,
-        "Gs_vadv"    : G_vadv,
-        "Gs_frc_sw"  : G_frc_sw,
-        "Gs_frc_lw"  : G_frc_lw,
-        "Gs_frc_sh"  : G_frc_sh,
-        "Gs_frc_lh"  : G_frc_lh,
-        "Gs_frc_fwf" : G_frc_fwf,
-        "Gs_hdiff"   : G_hdiff,
-        "Gs_vdiff"   : G_vdiff,
-        "Gs_sum"     : G_sum,
-        "Gs_res"     : G_res,
-    }
-
-    for k, v in result.items():
-        result[k] = v.transpose('time', 'k', 'tile', 'j', 'i')
-
-
-
-    """
-    # I realize that data is already there. No need to do this
-    result2D = {
-        # My convention for vertical flux: positive upward
-        "EXF_sw"     : - ds.oceQsw,
-        "EXF_lw"     :   ds.EXFlwnet,
-        "EXF_sh"     : - ds.EXFhs,
-        "EXF_lh"     : - ds.EXFhl,
-        "EXF_fwf"    : - EXFfwf,
-    }
-    """
-
-
-
-    return result
 
 

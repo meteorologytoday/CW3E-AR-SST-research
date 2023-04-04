@@ -42,18 +42,20 @@ parser.add_argument('--lon-nbox',   type=int, help='Longitude range. 0-360', req
 parser.add_argument('--mask-ERA5',  type=str, help='mask file of ERA5', required=True)
 parser.add_argument('--mask-ECCO',  type=str, help='mask file of ECCO', required=True)
 parser.add_argument('--ignore-empty-box',  action="store_true")
+parser.add_argument('--fixed-500m',  action="store_true")
 
 args = parser.parse_args()
 
 print(args)
 
+
+
+
+
 # Configuration
 
 beg_date = datetime(args.beg_year-1, 10,  1 )
 end_date = datetime(args.end_year,    4,  1 )
-
-end_date = datetime(args.beg_year-1, 10, 3)
-
 
 total_days = (end_date - beg_date).days
 
@@ -70,6 +72,11 @@ print("Total days: ", total_days)
 if total_days <= 0:
     raise Exception("No days are avaiable.")
 
+if args.fixed_500m :
+    extra_dirsuffix = "_500m"
+    print("Warning: Using `--fixed-500m` option.")
+else:
+    extra_dirsuffix = ""
 
 lon_bnds = np.array([ lon_rng[0] + (lon_rng[1] - lon_rng[0]) / args.lon_nbox * i for i in range(args.lon_nbox+1)])
 lat_bnds = np.array([ lat_rng[0] + (lat_rng[1] - lat_rng[0]) / args.lat_nbox * i for i in range(args.lat_nbox+1)])
@@ -107,7 +114,7 @@ ECCO_varnames = [
     "dMLTdx",
     "dMLTdy",
 ]
-            
+
 ignored_months = [4, 5, 6, 7, 8, 9]
 
 
@@ -231,6 +238,8 @@ def magicalExtension(_data):
     res_max = np.amax(np.abs(res[np.isfinite(res)]))
     print("Max of abs(MLG_residue): ", res_max)
 
+
+    print("The mean of MLD: ", np.nanmean(_data["MLD"]))
 
     for method in ARdetect_methods:
         _tmp = _data["map_%s" % method].to_numpy()
@@ -362,7 +371,12 @@ for d, _t in enumerate(t_vec):
 
         for varname in ECCO_varnames:
 
-            ecco_filename = ECCO_helper.getECCOFilename(varname, "DAILY", _t)
+            # Certain ECCO variables do not depend on mixed layer depth
+            if varname in ["MXLDEPTH", "MLD", ]: 
+                ecco_filename = ECCO_helper.getECCOFilename(varname, "DAILY", _t)
+            else:
+                ecco_filename = ECCO_helper.getECCOFilename(varname, "DAILY", _t, extra_dirsuffix=extra_dirsuffix)
+
             ecco_filename = "data/ECCO_LLC/%s/%s" % ecco_filename
 
             print("Load `%s` from file: %s" % ( varname, ecco_filename, ))

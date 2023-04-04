@@ -187,19 +187,24 @@ if __name__  == "__main__" :
  
     area = R_earth**2 * np.cos(np.deg2rad(llat)) * dlon * dlat
 
-    print("Compute AR_objets") 
-    labeled_array, AR_objs = detectARObjects(IVT_anom, llat, llon, area, IVT_threshold=250.0, weight=IVT_full, filter_func = basicARFilter)
-    
-    labeled_array_full, AR_objs_full = detectARObjects(IVT_full, llat, llon, area, IVT_threshold=500.0, weight=IVT_full, filter_func = basicARFilter)
+    print("Compute AR_objets")
 
-    """
-    for i, AR_obj in enumerate(AR_objs):
-        pts = AR_obj["farthest_pair"]
-        cent = AR_obj["centroid"]
-        print("[%i] cent=(%f, %f), area=%fkm^2" % (i, cent[0], cent[1], AR_obj["area"] / 1e6))
-    """
+    algo_results = dict( 
+        ANOMIVT250 = dict(
+            result=detectARObjects(IVT_anom, llat, llon, area, IVT_threshold=250.0, weight=IVT_full, filter_func = basicARFilter),
+            IVT=IVT_anom,
+        ),
+        TOTIVT500 = dict(
+            result=detectARObjects(IVT_full, llat, llon, area, IVT_threshold=500.0, weight=IVT_full, filter_func = basicARFilter),
+            IVT=IVT_full,
+        ),
+        TOTIVT250 = dict(
+            result=detectARObjects(IVT_full, llat, llon, area, IVT_threshold=250.0, weight=IVT_full, filter_func = None),
+            IVT=IVT_full,
+        ),
+    )
 
-    print("labeled_array: ", labeled_array.shape) 
+
     print("Loading matplotlib") 
     import matplotlib.pyplot as plt
     from matplotlib import cm
@@ -222,10 +227,10 @@ if __name__  == "__main__" :
     proj_norm = ccrs.PlateCarree()
 
     fig, ax = plt.subplots(
-        2, 1,
-        figsize=(6, 4),
+        len(list(algo_results.keys())), 1,
+        figsize=(12, 8),
         subplot_kw=dict(projection=proj),
-        gridspec_kw=dict(hspace=0, wspace=0.2),
+        gridspec_kw=dict(hspace=0.15, wspace=0.2),
         constrained_layout=False,
         squeeze=False,
     )
@@ -233,24 +238,25 @@ if __name__  == "__main__" :
 
 
         
-    labeled_array = labeled_array.astype(float)
-    labeled_array_full = labeled_array_full.astype(float)
+
+    for i, keyname in enumerate(["TOTIVT250", "TOTIVT500", "ANOMIVT250"]):
+
+        print("Plotting :", keyname)
         
-    labeled_array[labeled_array!=0] = 1.0
-    labeled_array_full[labeled_array_full!=0] = 1.0
+        _labeled_array = algo_results[keyname]["result"][0]
+        _AR_objs = algo_results[keyname]["result"][1]
 
+        _IVT = algo_results[keyname]["IVT"]
 
-    for i, (_IVT, _AR_objs, _labeled_array) in enumerate([
-        (IVT_full, AR_objs_full, labeled_array_full),
-        (IVT_anom, AR_objs, labeled_array),
-    ]):
+        _labeled_array = _labeled_array.astype(float)
+        _labeled_array[_labeled_array!=0] = 1.0
 
         _ax = ax[i, 0]
 
-        _ax.set_title(["FULL", "ANOM"][i])
+        _ax.set_title(keyname)
         
-        levs = [np.linspace(0, 1000, 11), np.linspace(-800, 800, 17)][i]
-        cmap = cm.get_cmap([ "ocean_r", "bwr_r" ][i])
+        levs = [np.linspace(0, 1000, 11), np.linspace(0, 1000, 11), np.linspace(-800, 800, 17)][i]
+        cmap = cm.get_cmap([ "ocean_r", "ocean_r", "bwr_r" ][i])
 
         mappable = _ax.contourf(lon, lat, _IVT, levels=levs, cmap=cmap,  transform=proj_norm)
         plt.colorbar(mappable, ax=_ax, orientation="vertical")

@@ -1,6 +1,7 @@
 import numpy as np
 import datetime
 from datetime import timedelta, datetime
+import pandas as pd
 
 def doy_noleap(t):
 
@@ -20,33 +21,22 @@ def fraction_of_year(t):
     return ( doy_leap(dt) - 1 ) / total_doy(dt)
 
 
-def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
-
-    if ts.dtype != object:    
-        ts_datetime = ts.astype(object)
-    else:
-        ts_datetime = ts
-
+def decomposeClimAnom(ts, xs: np.ndarray, assist = None):
 
     if assist is None:
 
-        tm = np.array([
-            datetime(2021, 1, 1) + _t * timedelta(days=1)  for _t in range(365)
-        ]).astype("datetime64[s]")
+        tm = pd.date_range("2021-01-01", "2021-12-31", freq="D", inclusive="both")
 
-
-        doy  = np.zeros(len(ts_datetime), dtype=np.int32)
-        skip = np.zeros(len(ts_datetime), dtype=np.bool_)
+        doy  = np.zeros(len(ts), dtype=np.int32)
+        skip = np.zeros(len(ts), dtype=np.bool_)
         cnt  = np.zeros(len(tm), dtype=np.int32)
         
         doy[:] = -1
-        for i, t in enumerate(ts_datetime):
+        for i, t in enumerate(ts):
 
             m = t.month
             d = t.day
 
-
-            
             if m == 2 and d == 29:
                 skip[i] = True
             else:
@@ -69,19 +59,20 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
    
     xm       = np.zeros((len(tm),))
 
-    for i, t in enumerate(ts_datetime):
+    for i, t in enumerate(ts):
 
         if skip[i] :
             continue
         
         xm[doy[i]-1]  += xs[i]
+        
 
     cnt_nz = cnt != 0
     xm[cnt_nz] /= cnt[cnt_nz]
     xm[cnt == 0] = np.nan
 
     xa = np.zeros((len(xs),))
-    for i, t in enumerate(ts_datetime):
+    for i, t in enumerate(ts):
 
         m = t.month
         d = t.day
@@ -96,12 +87,9 @@ def decomposeClimAnom(ts: np.ndarray, xs: np.ndarray, assist = None):
         
         else:
            
-            #print("xs[i]: ", xs[i], "; xm[doy[i]-1]: ", xm[doy[i]-1]) 
+            #print("xs[%d]: " % i, xs[i], "; xm[doy[i]-1]: ", xm[doy[i]-1]) 
             xa[i] = xs[i] - xm[doy[i]-1]
 
-    tm = np.array([
-        datetime(2021, 1, 1) + _t * timedelta(days=1)  for _t in range(len(tm))
-    ]).astype("datetime64[s]")
 
     return tm, xm, xa, cnt, assist
 
@@ -136,7 +124,7 @@ if __name__ == "__main__":
         
 
 
-    t_clim, clim, anom, cnt, _ = decomposeClimAnom(pd.to_datetime(dates), raw_data)
+    t_clim, clim, anom, cnt, _ = decomposeClimAnom(dates, raw_data)
 
     if np.any(cnt != expected_cnt):
         print("[Debug] Expected cnt: ", expected_cnt)

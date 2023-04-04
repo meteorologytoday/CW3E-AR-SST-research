@@ -9,8 +9,7 @@ import watertime_tools
 import traceback
 from pathlib import Path
 import argparse
-from datetime import (timedelta, datetime, timezone)
-
+import pandas as pd
 parser = argparse.ArgumentParser(
                     prog = 'plot_skill',
                     description = 'Plot prediction skill of GFS on AR.',
@@ -21,7 +20,7 @@ parser.add_argument('--beg-year', type=int, help='Input file', required=True)
 parser.add_argument('--end-year', type=int, help='Input file', required=True)
 parser.add_argument('--ncpu', type=int, help='Number of CPUs.', default=4)
 parser.add_argument('--overwrite', help='If we overwrite the output', action="store_true")
-parser.add_argument('--IWV-cond-off', action="store_true")
+parser.add_argument('--AR-algo', type=str, required=True, choices=["Rutz2017", "ANOM_LEN"])
 
 parser.add_argument('--output-dir', type=str, help='Output dir', default="")
 parser.add_argument('--title', type=str, help='Output title', default="")
@@ -30,12 +29,16 @@ args = parser.parse_args()
 print(args)
 
 if args.output_dir == "":
-    args.output_dir = "%s/climanom%s_%04d-%04d" % (args.input_dir, ("_IWV-off" if args.IWV_cond_off else "" ), args.beg_year, args.end_year, )
+    args.output_dir = "%s/climanom_%04d-%04d" % (args.input_dir, args.beg_year, args.end_year, )
+    
+output_dir_stat = "%s/%s" % (args.output_dir, args.AR_algo)
 
-print("Planned output dir: %s" % (args.output_dir,))
+print("Planned output dir 1: %s" % (args.output_dir,))
+print("Planned output dir 2: %s" % (output_dir_stat,))
 
 print("Create dir: %s" % (args.output_dir,))
 Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+Path(output_dir_stat).mkdir(parents=True, exist_ok=True)
 
 filename_clim = "%s/clim.nc" % (args.output_dir,)
 filename_anom = "%s/anom.nc" % (args.output_dir,)
@@ -62,15 +65,18 @@ ds = xr.merge(
 
 # Compute mean and anomaly
 
-def convertdt64todt(dt64):
-    return datetime.fromtimestamp( (dt64 - np.datetime64("1970-01-01")) / np.timedelta64(1, 's' ))
+#def convertdt64todt(dt64):
+#    return datetime.fromtimestamp( (dt64 - np.datetime64("1970-01-01")) / np.timedelta64(1, 's' ))
+
  
-ts_np64 = ds.time.to_numpy().astype("datetime64[ns]")
-ts_dt   = ts_np64.astype("datetime64[s]").astype(object) # need to be datetime64[s] first so that the object casting will result in a datetime object.
+#ts_np64 = ds.time.to_numpy().astype("datetime64[ns]")
+#ts_dt   = ts_np64.astype("datetime64[s]").astype(object) # need to be datetime64[s] first so that the object casting will result in a datetime object.
 
 
-tm_np64 = np.array([ np.datetime64('2022-01-01') + np.timedelta64(1,'D') * d for d in range(365) ]).astype("datetime64[ns]")
+#tm_np64 = np.array([ np.datetime64('2022-01-01') + np.timedelta64(1,'D') * d for d in range(365) ]).astype("datetime64[ns]")
 
+tm = pd.date_range("2021-01-01", "2021-12-31", freq="D", inclusive="both")
+ts = pd.DatetimeIndex(ds.time.to_numpy())
 
 ds_clim = []
 ds_anom = []
@@ -88,12 +94,13 @@ def doStat(varname):
 
     print("Doing stat of variable: %s" % (varname,))
 
+    global tm
     _da_mean = xr.DataArray(
         name = varname,
-        data = np.zeros((len(tm_np64), len(ds.coords["lat"]), len(ds.coords["lon"]))),
+        data = np.zeros((len(tm), len(ds.coords["lat"]), len(ds.coords["lon"]))),
         dims = ["time", "lat", "lon"],
         coords = {
-            "time" : tm_np64,
+            "time" : tm,
         }
     )
    
@@ -101,10 +108,10 @@ def doStat(varname):
  
     _da_anom = xr.DataArray(
         name = varname,
-        data = np.zeros((len(ts_np64), len(ds.coords["lat"]), len(ds.coords["lon"]))),
+        data = np.zeros((len(ts), len(ds.coords["lat"]), len(ds.coords["lon"]))),
         dims = ["time", "lat", "lon"],
         coords = {
-            "time" : ts_np64,
+            "time" : ts,
         }
     )
     
@@ -115,12 +122,12 @@ def doStat(varname):
 
             xs = _var.to_numpy()
             
-            tm, xm, xa, cnt, _ = anomalies.decomposeClimAnom(ts_dt, xs)
+            tm, xm, xa, cnt, _ = anomalies.decomposeClimAnom(ts, xs)
 
             _da_mean[:, j, i] = xm
             _da_anom[:, j, i] = xa[:]
 
-
+            #print(ts[0], ";" , ts[-1])
     return _da_mean, _da_anom
 
 
@@ -141,7 +148,6 @@ if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filena
 
     ds_clim = xr.merge(ds_clim)
     ds_anom = xr.merge(ds_anom)
-
 
     ds_clim.to_netcdf(filename_clim)
     ds_anom.to_netcdf(filename_anom)
@@ -174,16 +180,26 @@ time_labels = [
     "Oct-Mar",
 ]
 
+    
+if args.AR_algo == "Rutz2017":
+
+    AR_cond  = (ds.IVT >= 250) & (ds.IWV >= 20.0)
+    ARf_cond = (ds.IVT < 250) | ( (ds.IVT >= 250) & (ds.IWV < 20.0) )
+  
+elif args.AR_algo == "ANOM_LEN":
+
+    AR_cond  = np.isfinite(ds.map_ANOM_LEN) & (ds.map_ANOM_LEN > 0)
+    ARf_cond  = np.isfinite(ds.map_ANOM_LEN) & (ds.map_ANOM_LEN == 0)
+ 
+elif args.AR_algo == "TOTIVT250":
+
+    AR_cond  = np.isfinite(ds.map_TOTIVT250) & (ds.map_TOTIVT250 > 0)
+    ARf_cond  = np.isfinite(ds.map_TOTIVT250) & (ds.map_TOTIVT250 == 0)
 
 
 ds_stats = {}
 
-for condition_name, (IVT_min, IVT_max), in [
-    ("clim",  (0, np.inf)   ),
-    ("ARf",   (0, 250)      ),
-    ("AR",    (250, np.inf )),
-    ("AR+ARf", (0, np.inf  )),
-]:
+for condition_name in ["clim", "ARf", "AR", "AR+ARf"]:
 
     print("Process condition: ", condition_name)
 
@@ -204,29 +220,7 @@ for condition_name, (IVT_min, IVT_max), in [
 
     ds_stats[condition_name] = ds_stat
 
-    if condition_name == "clim":
-        IVT_cond = np.isfinite(ds.IVT)
 
-    elif condition_name == "AR":
-        if args.IWV_cond_off:
-            IVT_cond = (ds.IVT >= 250)
-        else:
-            IVT_cond = (ds.IVT >= 250) & (ds.IWV >= 20.0)
-    
-    elif condition_name == "ARf":
-        if args.IWV_cond_off:
-            IVT_cond = (ds.IVT < 250)
-        else:
-            IVT_cond = (ds.IVT < 250) | ( (ds.IVT >= 250) & (ds.IWV < 20.0) )
-  
-    elif condition_name == "AR+ARf":
-        IVT_cond = np.isfinite(ds.IVT)
-          
-   
-    #IVT_cond_ndays = ifNdaysInARow(IVT_cond)
- 
-    #print("SHAPE OF IVT_COND: ", IVT_cond.shape)
- 
     for m, wm in enumerate(time_constrains): 
 
         time_cond = ds.time.dt.month.isin(watertime_tools.wm2m(wm))
@@ -234,23 +228,24 @@ for condition_name, (IVT_min, IVT_max), in [
 
         
         if condition_name == "clim":
-            #_ds_ref = ds_clim
-            #total_cond = time_clim_cond
             
             _ds_ref = ds
             total_cond = time_cond
-            
-            #print( "sum time_clim_cond: ",  np.nansum( time_clim_cond.astype(int).to_numpy() ) )
-            #print( "sum time_cond:      ",  np.nansum( time_cond.astype(int).to_numpy() ) )
-
 
         elif condition_name == "AR+ARf":
+        
             _ds_ref = ds_anom
             total_cond = time_cond
         
-        elif condition_name in ["AR", "ARf"]:
+        elif condition_name == "AR":
+
             _ds_ref = ds_anom
-            total_cond = time_cond & IVT_cond
+            total_cond = time_cond & AR_cond
+ 
+        elif condition_name == "ARf":
+
+            _ds_ref = ds_anom
+            total_cond = time_cond & ARf_cond
  
         else:
             raise Exception("Unknown condition_name: ", condition_name) 
@@ -261,10 +256,10 @@ for condition_name, (IVT_min, IVT_max), in [
 
         _ds = _ds_ref.where(total_cond)
 
-
         for varname, _ in ds_stat.items():
 
             _data = _ds[varname].to_numpy()
+
             ds_stat[varname][m, :, :, 0] = np.nanmean(_data, axis=0) #_data.mean( dim="time", skipna=True)
             ds_stat[varname][m, :, :, 1] = np.nanstd(_data,  axis=0) #_data.std(  dim="time", skipna=True)
             ds_stat[varname][m, :, :, 2] = np.nanvar(_data,  axis=0) #_data.std(  dim="time", skipna=True)
@@ -274,7 +269,7 @@ for condition_name, (IVT_min, IVT_max), in [
 ds_stats["AR-ARf"] = ds_stats["AR"] - ds_stats["ARf"]
 
 for k in ["clim", "AR", "ARf", "AR+ARf", "AR-ARf"]:
-    output_filename = "%s/stat_%s.nc" % (args.output_dir, k,)
+    output_filename = "%s/stat_%s.nc" % (output_dir_stat, k,)
     print("Writing output file: %s" % (output_filename,))
     
     ds_stats[k].to_netcdf(output_filename)
