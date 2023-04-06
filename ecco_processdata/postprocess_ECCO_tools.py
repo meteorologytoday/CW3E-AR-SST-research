@@ -47,6 +47,12 @@ def calGrad(Q, xgcm_grid, ecco_grid):
     return dQdx, dQdy
 
 
+def rotateVector2LatLon(u, v, ecco_grid):
+
+    u_e = u * ecco_grid['CS'] - v * ecco_grid['SN']
+    v_n = u * ecco_grid['SN'] + v * ecco_grid['CS']
+    
+    return u_e, v_n
 
 
 def detectMLNz(h, z_W, mask=None, fill_value=default_fill_value_int):
@@ -216,6 +222,7 @@ def processECCO(
     output_filename,
     MLD_dev = 0.03,
     fixed_MLD = -1.0, # if this option is positive, then MLD will be assignd with this value
+    debug = False,
 ):
 
     print("[processECCO] Target datetime: ", target_datetime)
@@ -233,7 +240,7 @@ def processECCO(
     beg_datetime = target_datetime # - timedelta(days=1)
 
     snp_varnames = ["THETA", "SALT", "ETAN"]
-    ave_varnames = ["MXLDEPTH", "Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff", "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf", "THETA", "SALT", "UVEL", "VVEL", "RHOAnoma", "PHIHYDcR"]
+    ave_varnames = ["MXLDEPTH", "Gs_ttl", "Gs_hadv", "Gs_vadv", "Gs_hdiff", "Gs_vdiff", "Gs_frc_sw", "Gs_frc_lw", "Gs_frc_sh", "Gs_frc_lh", "Gs_frc_fwf", "THETA", "SALT", "UVEL", "VVEL", "WVEL", "RHOAnoma", "PHIHYDcR", ]
 
     ds = ECCO_helper.loadECCOData_continuous(
         beg_datetime = beg_datetime,
@@ -425,7 +432,7 @@ def processECCO(
     ML_ave["dMLSdt"] = (MLS_snp[1, :, :, :] - MLS_snp[0, :, :, :]) / dt
     
     #ML_ave["MLT"] = (MLT_snp[0, :, :, :] + MLT_snp[1, :, :, :]) / 2.0
-    #ML_ave["MLT"] = ML_ave["MLT"].rename()
+    #ML_ave["MLT"] = ML_ave["MLT"].rename("MLT")
 
     ML_ave["MLG_rescale"] = - MLT_snp[1, :, :, :] / s_0 * (s_1 - s_0) / dt
     ML_ave["MLG_rescale"] = ML_ave["MLG_rescale"].rename('MLG_rescale')
@@ -458,7 +465,7 @@ def processECCO(
     ML_ave2 = {}
 
 
-    for varname in ["MLT", "MLS", "MLU", "MLV", "U_g", "V_g", "dMLTdx", "dMLTdy", "dMLSdx", "dMLSdy", "dTdz_b", "dSdz_b"]:
+    for varname in ["MLT", "MLS", "MLU", "MLV", "MLU_g", "MLV_g", "MLU_ag", "MLV_ag", "dTdz_b", "dSdz_b", "T_b", "w_b"]:
          ML_ave2[varname] = xr.zeros_like(ML_ave["MLG_ttl"]).rename(varname)
 
     
@@ -485,8 +492,8 @@ def processECCO(
         "MLS" : ds["SALT"],
         "MLU" : UVEL,
         "MLV" : VVEL,
-        "U_g" : U_g,
-        "V_g" : V_g,
+        "MLU_g" : U_g,
+        "MLV_g" : V_g,
     }.items():
 
         for l in range(Nl):
@@ -504,19 +511,42 @@ def processECCO(
     ML_ave2["dMLTdx"], ML_ave2["dMLTdy"] = calGrad_wrap(ML_ave2["MLT"])
     ML_ave2["dMLSdx"], ML_ave2["dMLSdy"] = calGrad_wrap(ML_ave2["MLS"])
 
+    # rotate to latlon
+    UVEL, VVEL = rotateVector2LatLon(UVEL, VVEL, ecco_grid)
+    U_g, V_g   = rotateVector2LatLon(U_g,  V_g, ecco_grid)
+    ML_ave2["dMLTdx"], ML_ave2["dMLTdy"] = rotateVector2LatLon(ML_ave2["dMLTdx"], ML_ave2["dMLTdy"], ecco_grid) 
+    ML_ave2["MLU"], ML_ave2["MLV"] = rotateVector2LatLon(ML_ave2["MLU"], ML_ave2["MLV"], ecco_grid) 
+    ML_ave2["MLU_g"], ML_ave2["MLV_g"] = rotateVector2LatLon(ML_ave2["MLU_g"], ML_ave2["MLV_g"], ecco_grid) 
 
+    ML_ave2["MLU_ag"] = ML_ave2["MLU"]  - ML_ave2["MLU_g"]
+    ML_ave2["MLV_ag"] = ML_ave2["MLV"]  - ML_ave2["MLV_g"]
 
+    # Compute advection
+    ML_ave2["MLHADVT"]    = - ( ML_ave2["dMLTdx"] * ML_ave2["MLU"]    + ML_ave2["dMLTdy"] * ML_ave2["MLV"] )
+    ML_ave2["MLHADVT_g"]  = - ( ML_ave2["dMLTdx"] * ML_ave2["MLU_g"]  + ML_ave2["dMLTdy"] * ML_ave2["MLV_g"] )
+    ML_ave2["MLHADVT_ag"] = - ( ML_ave2["dMLTdx"] * ML_ave2["MLU_ag"] + ML_ave2["dMLTdy"] * ML_ave2["MLV_ag"] )
+ 
     for l in range(Nl):
         MLD = MLDs_snp[1][l, :, :]
 
-        dTdz = calculus_tools.W_ddz_T(ds["THETA"][0, :, l, :, :].to_numpy(), z_W=z_W)
-        dSdz = calculus_tools.W_ddz_T(ds["SALT"][0, :, l, :, :].to_numpy(), z_W=z_W)
+        THETA = ds["THETA"][0, :, l, :, :].to_numpy()
+        SALT  = ds["SALT"][0, :, l, :, :].to_numpy()
+        WVEL  = ds["WVEL"][0, :, l, :, :].to_numpy()
+
+
+        dTdz = calculus_tools.W_ddz_T(THETA, z_W=z_W)
+        dSdz = calculus_tools.W_ddz_T(SALT, z_W=z_W)
 
         ML_ave2["dTdz_b"][0, l, :, :] = evalAtMLD_W(dTdz, MLD, z_W, mask=mask2D[l])
         ML_ave2["dSdz_b"][0, l, :, :] = evalAtMLD_W(dSdz, MLD, z_W, mask=mask2D[l])
+        
+        ML_ave2["T_b"][0, l, :, :] = evalAtMLD_T(THETA, MLD, z_W, mask=mask2D[l])
+        ML_ave2["w_b"][0, l, :, :] = evalAtMLD_W(WVEL, MLD, z_W, mask=mask2D[l])
     
 
-    
+    ML_ave2["ENT_ADV"] = - ( ML_ave2["MLT"] - ML_ave2["T_b"] ) * ML_ave2["w_b"] / MLD
+
+
     output_data = []
 
     for k, var in ML_ave.items():
@@ -547,25 +577,80 @@ def processECCO(
 
     ds_out.to_netcdf(output_filename)
 
+    if debug:
+
+        print("Debug mode on.")
+        print("Load Matplotlib")
+        import matplotlib.pyplot as plt
+        import matplotlib.transforms as transforms
+        print("Loading complete.")
+        sel_lat = 30.0
+        sel_lon = 170.0
+        sel_tile = 7
 
 
-    # 1. convert T and S to density
-    # 2. Find the mixed-layer depth
-    # 3. Compute mixed-layer temperature
-    # 4. Compute mixed-layer salinity
-    # 5. Output file.
+        ds = ds.isel(tile=sel_tile, time=0).sel(j=sel_lat, i=sel_lon, method="nearest") 
+        ds_out = ds_out.isel(tile=sel_tile, time=0, time_snp=0).sel(j=sel_lat, i=sel_lon, method="nearest") 
+
+        print("Selected Lon: ", ds.coords["i"])
+        print("Selected Lat: ", ds.coords["j"])
 
 
-    #f_co = 2 * ec.Omega * np.sin(lat * np.pi / 180)
-    #f_co = f_co[:, None]
+        VEL = xr.merge([U_g.rename("U_g"), V_g.rename("V_g"), UVEL.rename("UVEL"), VVEL.rename("VVEL")])
+        VEL = VEL.isel(time=0, tile=sel_tile).sel(j=sel_lat, i=sel_lon, method="nearest")
 
-    #Nt, Nz, Ny, Nx = TEMP.shape
-    #print("Shape = (%d, %d, %d, %d)" % (Nt, Nz, Ny, Nx))
-                
-    #mask = 1 - TEMP[0, 0, :, :].mask.astype(np.int32)
-    #mask3D = 1 - TEMP[0, :, :, :].mask.astype(np.int32)
+        fig, ax = plt.subplots(1, 3, figsize=(12, 6))
 
-    #Nz_bot = np.sum(mask3D, axis=0)
+        # Temperature
+        _ax = ax[0]
+        _ax.plot(ds.THETA, - ds.coords["Z"], label="$\\Theta$")
+
+       
+        trans = transforms.blended_transform_factory(_ax.transData, _ax.transAxes)
+        _ax.plot([ds_out.MLT.to_numpy(), ] * 2, [0, 1], transform=trans, label="MLT")
+        
+        
+        # Velocity U 
+        _ax = ax[1]
+        _ax.set_title("Velocity - U (zonal)")
+        _ax.plot(VEL.UVEL, - ds.coords["Z"], "k-", label="UVEL")
+        _ax.plot(VEL.U_g, - ds.coords["Z"], "r-", label="U_g")
+        _ax.plot(VEL.UVEL - VEL.U_g, - ds.coords["Z"], "b-", label="U_ag")
+
+        trans = transforms.blended_transform_factory(_ax.transData, _ax.transAxes)
+        _ax.plot([ds_out.MLU.to_numpy(), ] * 2, [0, 1], color="gray", linestyle="dashed", transform=trans, label="MLU")
+        _ax.plot([ds_out.MLU_g.to_numpy(), ] * 2, [0, 1], color="magenta", linestyle="dashed", transform=trans, label="MLU_g")
+        _ax.plot([ds_out.MLU_ag.to_numpy(), ] * 2, [0, 1], color="dodgerblue", linestyle="dashed", transform=trans, label="MLU_ag")
+ 
+
+        # Velocity V 
+        _ax = ax[2]
+        _ax.set_title("Velocity - V (meridional)")
+        _ax.plot(VEL.VVEL, - ds.coords["Z"], "k-", label="VVEL")
+        _ax.plot(VEL.V_g, - ds.coords["Z"], "r-", label="V_g")
+        _ax.plot(VEL.VVEL - VEL.V_g, - ds.coords["Z"], "b-", label="V_ag")
+
+        trans = transforms.blended_transform_factory(_ax.transData, _ax.transAxes)
+        _ax.plot([ds_out.MLV.to_numpy(), ] * 2, [0, 1], color="gray", linestyle="dashed", transform=trans, label="MLV")
+        _ax.plot([ds_out.MLV_g.to_numpy(), ] * 2, [0, 1], color="magenta", linestyle="dashed", transform=trans, label="MLV_g")
+        _ax.plot([ds_out.MLV_ag.to_numpy(), ] * 2, [0, 1], color="dodgerblue", linestyle="dashed", transform=trans, label="MLV_ag")
+ 
+
+
+        for _ax in ax.flatten():
+            trans = transforms.blended_transform_factory(_ax.transAxes, _ax.transData)
+            _ax.plot([0, 1], [ds_out.MLD.to_numpy(), ] * 2, transform=trans)
+     
+            _ax.set_ylim([0, 100])
+            
+            _ax.invert_yaxis()
+            _ax.grid()
+            _ax.legend()
+
+        plt.show()
+            
+
+
 
 if __name__ == "__main__" : 
 
@@ -574,8 +659,13 @@ if __name__ == "__main__" :
     target_datetime = datetime(2006, 12, 29)
     output_filename = "data/ECCO_LLC/%s/%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)
     
+    output_filename = "./%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)[1]
+    
+    print("Output file: ", output_filename)
     processECCO(
         target_datetime,
         output_filename,
+        debug = True,
     ) 
-    
+   
+     
