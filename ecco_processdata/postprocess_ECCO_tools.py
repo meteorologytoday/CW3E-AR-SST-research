@@ -588,16 +588,17 @@ def processECCO(
         sel_lon = 170.0
         sel_tile = 7
 
-
-        ds = ds.isel(tile=sel_tile, time=0).sel(j=sel_lat, i=sel_lon, method="nearest") 
-        ds_out = ds_out.isel(tile=sel_tile, time=0, time_snp=0).sel(j=sel_lat, i=sel_lon, method="nearest") 
+        idx = ( (ds.XC - sel_lon)**2 + (ds.YC - sel_lat)**2).argmin(dim=("tile", "j", "i"))
+        print("Selected idx: ", idx)
+        ds = ds.isel(time=0).isel(idx)
+        ds_out = ds_out.isel(time=0, time_snp=0).isel(idx)
 
         print("Selected Lon: ", ds.coords["i"])
         print("Selected Lat: ", ds.coords["j"])
 
 
         VEL = xr.merge([U_g.rename("U_g"), V_g.rename("V_g"), UVEL.rename("UVEL"), VVEL.rename("VVEL")])
-        VEL = VEL.isel(time=0, tile=sel_tile).sel(j=sel_lat, i=sel_lon, method="nearest")
+        VEL = VEL.isel(time=0).isel(idx)
 
         fig, ax = plt.subplots(1, 3, figsize=(12, 6))
 

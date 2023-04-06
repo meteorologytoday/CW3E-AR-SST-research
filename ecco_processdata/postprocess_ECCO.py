@@ -84,6 +84,7 @@ class JOB:
             ds.to_netcdf(output_filename_G_terms, format='NETCDF4')
            
 
+        """
         # Phase 2
         # This one computes the advection. Does not depend on MLD_method.
         _tmp = ECCO_helper.getECCOFilename("HADV_g", "DAILY", self.t)
@@ -103,7 +104,8 @@ class JOB:
             ds = ECCO_computeTendency.computeTendencyAdv(self.t)
             print("Output: ", output_filename_ADV)
             ds.to_netcdf(output_filename_ADV, format='NETCDF4')
- 
+        """
+
         # Phase 3
         # This one computes the mixed-layer integrated quantities
         _tmp = ECCO_helper.getECCOFilename("MLT", "DAILY", self.t, extra_dirsuffix=extra_dirsuffix)
