@@ -109,10 +109,16 @@ ECCO_varnames = [
     "dTdz_b",
     "MLU",
     "MLV",
-    "U_g",
-    "V_g",
+    "MLU_g",
+    "MLV_g",
+    "MLU_ag",
+    "MLV_ag",
     "dMLTdx",
     "dMLTdy",
+    "MLHADVT_g",
+    "MLHADVT_ag",
+    "ENT_ADV",
+    "w_b",
 ]
 
 ignored_months = [4, 5, 6, 7, 8, 9]
@@ -132,7 +138,7 @@ f_co = None
 
 ARdetect_methods = ["ANOM_LEN", "TOTIVT250"]
 
-computed_LLC_vars  = ["MLG_geo", "MLG_ageo", "dTdz_b_over_h", "MLG_residue"]
+computed_LLC_vars  = ["dTdz_b_over_h", "MLG_residue"]
 computed_ERA5_vars = ["SFCWIND", ]
 
 for method in ARdetect_methods:
@@ -214,10 +220,7 @@ def magicalExtension(_data):
     #_data['ERA5_MLG_ttl_exp']  = _data['ERA5_sfc_hf'] / (3996*1026 * _data['MLD'])
     #_data['ERA5_MLG_ttl_uexp'] = _data['ERA5_MLG_ttl'] - _data['ERA5_MLG_frc']
     
-    _data["MLG_geo"]  = - ( _data["MLU"] * _data["dMLTdx"] + _data["MLV"] * _data["dMLTdy"] )
-    _data["MLG_ageo"] = - ( (_data["MLU"] - _data["U_g"]) * _data["dMLTdx"] + (_data["MLV"] - _data["V_g"]) * _data["dMLTdy"] )
     _data["dTdz_b_over_h"] = _data["dTdz_b"] / _data["MLD"]
-    
     _data["SFCWIND"] = (_data["u10"]**2.0 + _data["v10"]**2.0)**0.5
     
     _data['MLG_residue'] = _data['dMLTdt'] - (

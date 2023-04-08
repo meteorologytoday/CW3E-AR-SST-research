@@ -95,8 +95,10 @@ ECCO_mapping = {
             "MLGs_sum", "MLGs_res", "MLGs_ent",
 
             "MLD", "dMLTdx", "dMLTdy", "dMLSdx", "dMLSdy",
-            "MLU", "MLV", "U_g", "V_g",
-            "dTdz_b", "dSdz_b",
+            "MLU", "MLV", "MLU_g", "MLV_g", "MLU_ag", "MLV_ag",
+            "dTdz_b", "dSdz_b", "w_b", "T_b",
+    
+            "MLHADVT_g", "MLHADVT_ag", "ENT_ADV",
 
         ],
     },

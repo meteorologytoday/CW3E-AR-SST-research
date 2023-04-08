@@ -19,9 +19,9 @@ spatial_rngs=(
 )
 
 # Test box
-spatial_rngs=(
-    30 50 170 -170 1 1
-)
+#spatial_rngs=(
+#    30 50 170 -170 1 1
+#)
 
 
 nparms=6
@@ -41,7 +41,7 @@ if [ ! -f "$mask_ERA5" ]; then
 fi
 
 #for fixed_500m_opt in "" "--fixed-500m" ; do
-for fixed_500m_opt in "--fixed-500m" ; do
+for fixed_500m_opt in "" ; do
 
 for i in $( seq 1 $(( ${#spatial_rngs[@]} / $nparms )) ); do
 

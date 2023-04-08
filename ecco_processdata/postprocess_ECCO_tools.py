@@ -465,7 +465,7 @@ def processECCO(
     ML_ave2 = {}
 
 
-    for varname in ["MLT", "MLS", "MLU", "MLV", "MLU_g", "MLV_g", "MLU_ag", "MLV_ag", "dTdz_b", "dSdz_b", "T_b", "w_b"]:
+    for varname in ["MLT", "MLS", "MLU", "MLV", "MLU_g", "MLV_g", "MLU_ag", "MLV_ag", "dTdz_b", "dSdz_b", "T_b", "w_b", "ENT_ADV"]:
          ML_ave2[varname] = xr.zeros_like(ML_ave["MLG_ttl"]).rename(varname)
 
     
@@ -542,9 +542,7 @@ def processECCO(
         
         ML_ave2["T_b"][0, l, :, :] = evalAtMLD_T(THETA, MLD, z_W, mask=mask2D[l])
         ML_ave2["w_b"][0, l, :, :] = evalAtMLD_W(WVEL, MLD, z_W, mask=mask2D[l])
-    
-
-    ML_ave2["ENT_ADV"] = - ( ML_ave2["MLT"] - ML_ave2["T_b"] ) * ML_ave2["w_b"] / MLD
+        ML_ave2["ENT_ADV"][0, l, :, :] = - ( ML_ave2["MLT"][0, l, :, :] - ML_ave2["T_b"][0, l, :, :] ) * ML_ave2["w_b"][0, l, :, :] / MLD
 
 
     output_data = []
@@ -657,7 +655,7 @@ if __name__ == "__main__" :
 
     print("*** This is for testing ***") 
 
-    target_datetime = datetime(2006, 12, 29)
+    target_datetime = datetime(1992, 10,  1)
     output_filename = "data/ECCO_LLC/%s/%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)
     
     output_filename = "./%s" % ECCO_helper.getECCOFilename("MLT", "DAILY", target_datetime)[1]
