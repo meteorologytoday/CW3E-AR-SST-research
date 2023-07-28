@@ -2,6 +2,11 @@ with open("shared_header.py", "rb") as source_file:
     code = compile(source_file.read(), "shared_header.py", "exec")
 exec(code)
 
+with open("shared_header_3hr.py", "rb") as source_file:
+    code = compile(source_file.read(), "shared_header_3hr.py", "exec")
+exec(code)
+
+
 import cdsapi
 import numpy as np
 
@@ -119,7 +124,11 @@ class JOB:
         ]
         
 
-        for processed_filename in processed_filenames:
+        for i in range(subcycles):
+
+
+            processed_filename = processed_filenames[i]
+            unprocessed_filename = filenames[i]
 
             if os.path.isfile(processed_filename):
 
@@ -129,7 +138,7 @@ class JOB:
 
                 print("[%s] Now postprocess to generate: %s" % (time_now_str, processed_filename,))
 
-                ds = netCDF4.Dataset(filename, "r")
+                ds = netCDF4.Dataset(unprocessed_filename, "r")
 
                 lat = ds.variables["latitude"][:]
                 lon = ds.variables["longitude"][:]
@@ -191,9 +200,6 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
-    if 5 <= new_d.month and new_d.month <= 10 :
-        continue
-    
     jobs.append(JOB(new_d))
 
 
@@ -208,7 +214,7 @@ Path(processed_dir).mkdir(parents=True, exist_ok=True)
 
 
 
-with Pool(processes=1) as pool:
+with Pool(processes=6) as pool:
     result = pool.map(wrap_retrieve, jobs)
 
 print("Done.")

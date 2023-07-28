@@ -10,6 +10,9 @@ import traceback
 from pathlib import Path
 import argparse
 import pandas as pd
+import re
+
+
 parser = argparse.ArgumentParser(
                     prog = 'plot_skill',
                     description = 'Plot prediction skill of GFS on AR.',
@@ -42,6 +45,7 @@ Path(output_dir_stat).mkdir(parents=True, exist_ok=True)
 
 filename_clim = "%s/clim.nc" % (args.output_dir,)
 filename_anom = "%s/anom.nc" % (args.output_dir,)
+filename_ttl  = "%s/ttl.nc" % (args.output_dir,)
 
 yrs = list(range(args.beg_year, args.end_year+1))
 
@@ -52,6 +56,7 @@ MLG_adv = (ds['MLG_hadv'] + ds['MLG_vadv']).rename('MLG_adv')
 MLG_diff = (ds['MLG_vdiff'] + ds['MLG_hdiff']).rename('MLG_diff')
 MLG_nonfrc = (MLG_adv + MLG_diff + ds['MLG_ent']).rename('MLG_nonfrc')
 
+#dMLDdt = ( ds['MLG_ent'] / ( ds[''] ) ).rename('dMLDdt')
 
 ds = xr.merge(
     [
@@ -80,7 +85,7 @@ ts = pd.DatetimeIndex(ds.time.to_numpy())
 
 ds_clim = []
 ds_anom = []
-
+ds_ttl  = []
 
 target_varnames = list(ds.keys())
 
@@ -101,6 +106,8 @@ def doStat(varname):
         dims = ["time", "lat", "lon"],
         coords = {
             "time" : tm,
+            "lat"  : ds.coords["lat"],
+            "lon"  : ds.coords["lon"],
         }
     )
    
@@ -112,9 +119,22 @@ def doStat(varname):
         dims = ["time", "lat", "lon"],
         coords = {
             "time" : ts,
+            "lat"  : ds.coords["lat"],
+            "lon"  : ds.coords["lon"],
         }
     )
-    
+ 
+    _da_ttl = xr.DataArray(
+        name = varname,
+        data = np.zeros((len(ts), len(ds.coords["lat"]), len(ds.coords["lon"]))),
+        dims = ["time", "lat", "lon"],
+        coords = {
+            "time" : ts,
+            "lat"  : ds.coords["lat"],
+            "lon"  : ds.coords["lon"],
+        }
+    )
+   
     for i in range(len(ds.coords["lon"])):
         for j in range(len(ds.coords["lat"])):
             
@@ -126,21 +146,26 @@ def doStat(varname):
 
             _da_mean[:, j, i] = xm
             _da_anom[:, j, i] = xa[:]
+            _da_ttl[:, j, i] = xs[:]
 
             #print(ts[0], ";" , ts[-1])
-    return _da_mean, _da_anom
+    return varname, _da_mean, _da_anom, _da_ttl
 
 
-if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filename_anom)):
+if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filename_anom) or (not path.exists(filename_ttl))):
 
     print("Ready to multiprocess the statistical job.")
     with Pool(processes=args.ncpu) as pool:
 
         it = pool.imap(doStat, target_varnames)
-        for (_da_mean, _da_anom) in it:
+        for (varname, _da_mean, _da_anom, _da_ttl) in it:
 
             ds_clim.append(_da_mean)
             ds_anom.append(_da_anom)
+
+            if re.match('^map_', varname):
+                print("Need total field of AR object mask variable: %s" % (varname,))
+                ds_ttl.append(_da_ttl)
 
 
 
@@ -148,15 +173,18 @@ if args.overwrite or (not path.exists(filename_clim)) or (not path.exists(filena
 
     ds_clim = xr.merge(ds_clim)
     ds_anom = xr.merge(ds_anom)
+    ds_ttl  = xr.merge(ds_ttl)
 
     ds_clim.to_netcdf(filename_clim)
     ds_anom.to_netcdf(filename_anom)
+    ds_ttl.to_netcdf(filename_ttl)
 
 else:
-    print("Files %s and %s already exists. Skip the computation." % (filename_clim, filename_anom))
+    print("Files %s and %s already exists. Skip the computation." % (filename_clim, filename_anom, filename_ttl))
 
     ds_clim = xr.open_dataset(filename_clim)
     ds_anom = xr.open_dataset(filename_anom)
+    ds_ttl  = xr.open_dataset(filename_ttl)
     
 
 # Construct

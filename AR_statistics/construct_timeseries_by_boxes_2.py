@@ -87,7 +87,7 @@ boxes = map_divide_tools.makeDividedBoxes(lon_bnds, lat_bnds)
 #for box in boxes:
 #    print(box)
 
-ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "u10", "v10", "t2m", "mtpr", "sst"]
+ERA5_varnames = ["IWV", "IVT", "IWVKE", "sst", "mslhf", "msshf", "msnlwrf", "msnswrf", "u10", "v10", "t2m", "mtpr", "sst", "lcc", "mcc", "hcc", "tcc"]
 ERA5ARobj_varnames = ["map", ]
 ECCO_varnames = [
     "dMLTdt",

@@ -2,27 +2,15 @@ with open("shared_header.py", "rb") as source_file:
     code = compile(source_file.read(), "shared_header.py", "exec")
 exec(code)
 
-with open("shared_header_3hr.py", "rb") as source_file:
-    code = compile(source_file.read(), "shared_header_3hr.py", "exec")
-exec(code)
-
-
-import numpy as np
+import postprocess_ERA5_sfc
 import cdsapi
 
 c = cdsapi.Client()
 
+download_dir = "data/ERA5/cloud"
+file_prefix = "ERA5_cloud"
 
-
-dhr = 3
-if 24 % dhr != 0:
-    raise Exception("Not cool. 24 / dhr is not an integer.")
-
-subcycles = int(24 / dhr)
-
-
-download_dir = "data/ERA5/sfc_%dhr" % (dhr,)
-file_prefix = "ERA5_sfc"
+processed_dir = "data/ERA5/sfc_processed"
 
 total_days = (end_time - beg_time).days
 
@@ -44,22 +32,19 @@ class JOB:
         d = self.t.day
 
         time_now_str = "%04d-%02d-%02d" % (y, m, d)
+        filename = "%s/%s_%s.nc" % (download_dir, file_prefix, time_now_str)
         tmp_filename = "%s/%s_%s.nc.tmp" % (download_dir, file_prefix, time_now_str)
 
-        filenames = [ 
-            "%s/%s_%s_%02d.nc" % (download_dir, file_prefix, time_now_str, dhr * i) for i in range(subcycles)
-        ]
- 
-        existence = [os.path.isfile(filename) for filename in filenames]
+        already_exists = os.path.isfile(filename)
 
-        if np.all(existence):
+        if already_exists:
 
             print("[%s] Data already exists. Skip." % (time_now_str, ))
 
 
         else:
 
-            print("[%s] Now producing files: %s" % (time_now_str, filenames,))
+            print("[%s] Now download file: %s" % (time_now_str, filename,))
 
             try:
                 c.retrieve(
@@ -68,11 +53,7 @@ class JOB:
                         'product_type': 'reanalysis',
                         'format': 'netcdf',
                         'variable': [
-                            '10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature',
-                            'mean_evaporation_rate', 'mean_surface_latent_heat_flux', 'mean_surface_net_long_wave_radiation_flux',
-                            'mean_surface_net_short_wave_radiation_flux', 'mean_surface_sensible_heat_flux', 'mean_total_precipitation_rate',
-                            'mean_vertically_integrated_moisture_divergence', 'sea_surface_temperature', 'surface_pressure',
-
+                            'high_cloud_cover', 'medium_cloud_cover', 'low_cloud_cover', 'total_cloud_cover',
                         ],
                         'day': [
                                 "%02d" % d,
@@ -100,10 +81,7 @@ class JOB:
                     },
                 tmp_filename)
                 pleaseRun("ncks -O --mk_rec_dmn time %s %s" % (tmp_filename, tmp_filename,))
-
-                for i, filename in enumerate(filenames):
-                    pleaseRun("ncra -O -d time,%d,%d %s %s" % (dhr*i, dhr*(i+1)-1, tmp_filename, filename,))
-                
+                pleaseRun("ncra -O %s %s" % (tmp_filename, filename,))
                 os.remove(tmp_filename)
 
             except Exception as e:
@@ -112,6 +90,7 @@ class JOB:
                 print(str(e))
                 
 
+ 
 def wrap_retrieve(job):
 
     job.work()
@@ -124,6 +103,16 @@ jobs = []
 for d in range(total_days):
     new_d =  beg_time + datetime.timedelta(days=d)
 
+    if 5 <= new_d.month and new_d.month <= 8 :
+        continue
+ 
+    # We need extra days to compute dSST/dt
+    if new_d.month == 4 and new_d.day != 1:
+        continue
+ 
+    if new_d.month == 9 and new_d.day != 30:
+        continue
+    
     jobs.append(JOB(new_d))
 
 
@@ -132,8 +121,12 @@ print("Total jobs: %d" % (len(jobs),))
 print("Create dir: %s" % (download_dir,))
 Path(download_dir).mkdir(parents=True, exist_ok=True)
 
+print("Create dir: %s" % (processed_dir,))
+Path(processed_dir).mkdir(parents=True, exist_ok=True)
 
-with Pool(processes=6) as pool:
+
+
+with Pool(processes=16) as pool:
 
     result = pool.map(wrap_retrieve, jobs)
 

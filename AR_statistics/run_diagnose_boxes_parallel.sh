@@ -22,7 +22,7 @@ spatial_rngs=(
 #spatial_rngs=(
 #    30 50 170 -170 1 1
 #)
-
+#ncpu=1
 
 nparms=6
 

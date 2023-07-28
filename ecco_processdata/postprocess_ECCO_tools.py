@@ -375,6 +375,12 @@ def processECCO(
         )) / dt
 
 
+    # Compute dMLDdt
+    ML_ave["dMLDdt"] = xr.zeros_like(sample2D_ave).rename("dMLDdt") 
+    for l in range(Nl):
+        ML_ave["dMLDdt"][0, l, :, :] = ( MLDs_snp[1][l, :, :] - MLDs_snp[0][l, :, :] ) / dt
+
+
     # Additional diagnostic variables 
     ML_ave["MLGs_adv"][:, :, :, :] = ML_ave["MLGs_hadv"] + ML_ave["MLGs_vadv"]
     ML_ave["dMLTsdt_res"] = ML_ave["dMLTsdt"] - (
