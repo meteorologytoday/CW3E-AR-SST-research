@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 import numpy as np
 
+# watermonth 1 = Oct
+
 m2wm = np.vectorize( lambda m: ((m - 10) % 12 + 1) )
 wm2m = np.vectorize( lambda wm:  ((wm + 9) - 1) % 12 + 1)
 
